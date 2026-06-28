@@ -1,220 +1,188 @@
 import { useEffect, useRef, useState } from 'react'
 import { useBridgeStore } from '@/stores/bridge.store'
 import { useUiStore } from '@/stores/ui.store'
-import { BridgeService } from '@/services/bridge.service'
 
-const SW_COLORS: Record<string, string> = {
+// ── DCC config ────────────────────────────────────────────────────────────────
+
+const SUPPORTED = ['houdini', 'blender']
+
+const DCC_COLOR: Record<string, string> = {
   houdini:        '#FF6B35',
   blender:        '#E87D0D',
   maya:           '#00AEEF',
   nuke:           '#B5C918',
+  unreal:         '#2F80ED',
   davinci_resolve:'#CE2626',
-  unreal_engine:  '#2F80ED',
-  cinema4d:       '#011A6A',
-  katana:         '#C084FC',
-  substance:      '#F9A825',
-  unknown:        '#7b6fff',
 }
-
-const SW_ICONS: Record<string, React.ReactNode> = {
-  houdini:  <HoudiniIcon />,
-  blender:  <BlenderIcon />,
-  maya:     <MayaIcon />,
-  nuke:     <NukeIcon />,
-}
-
-interface Props { onClose: () => void }
 
 const DCC_CONSOLE: Record<string, string> = {
   houdini: 'Windows → Python Shell',
   blender: 'Scripting workspace → Run Script',
-  maya:    'Script Editor (Python tab)',
-  nuke:    'Script Editor → Python',
 }
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+interface Props { onClose: () => void }
 
 export function BridgePanel({ onClose }: Props) {
   const {
-    serverRunning, serverPort, detected, clients,
-    importedCount, lastImportedAt, isDetecting, isImporting, error,
-    detectSoftware, refreshClients, importNodes, startServer,
+    port, detected, clients, importedCount, isImporting, execCmds,
+    detect, refreshClients, importNodes, fetchExecCmd,
   } = useBridgeStore()
   const { addToast } = useUiStore()
-  const pollRef  = useRef<ReturnType<typeof setInterval> | null>(null)
-  const [copying, setCopying]     = useState<string | null>(null)
-  const [execCmds, setExecCmds]   = useState<Record<string, string>>({})
+
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [copying, setCopying] = useState<string | null>(null)
 
   useEffect(() => {
-    startServer()
-    detectSoftware()
-    importNodes()
+    detect()
+    refreshClients()
     pollRef.current = setInterval(refreshClients, 3000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [])
 
-  // Pre-fetch exec commands for all supported DCCs once detected
+  // Pre-fetch exec commands for supported DCCs once detected
   useEffect(() => {
-    if (!detected.length) return
-    const supported = ['houdini','blender','maya','nuke']
-    detected.filter(sw => supported.includes(sw.kind.toLowerCase())).forEach(sw => {
-      if (execCmds[sw.id]) return
-      BridgeService.getExecCmd(sw.id).then(cmd => {
-        setExecCmds(prev => ({ ...prev, [sw.id]: cmd }))
-      }).catch(() => {})
-    })
+    detected
+      .filter(sw => SUPPORTED.includes(sw.kind))
+      .forEach(sw => fetchExecCmd(sw.kind))
   }, [detected])
 
-  const handleCopyCmd = async (id: string, name: string) => {
-    const cmd = execCmds[id]
+  const handleCopy = async (kind: string, name: string) => {
+    const cmd = execCmds[kind]
     if (!cmd) return
-    setCopying(id)
+    setCopying(kind)
     try {
       await navigator.clipboard.writeText(cmd)
-      addToast(`Command copied — paste in ${name}'s Python console`, { variant: 'success' })
+      addToast(`Copied — paste into ${name}'s Python console`, { variant: 'success' })
     } catch {
-      addToast('Could not copy', { variant: 'error' })
-    } finally {
-      setTimeout(() => setCopying(null), 2000)
+      addToast('Could not copy to clipboard', { variant: 'error' })
     }
+    setTimeout(() => setCopying(null), 2000)
   }
 
-  const handleManualImport = async () => {
+  const handleImport = async () => {
     const count = await importNodes()
-    if (count > 0) addToast(`Imported ${count} nodes`, { variant: 'success' })
-    else addToast('No nodes buffered — run the script in your DCC first', { variant: 'default' })
+    if (count > 0)
+      addToast(`Imported ${count.toLocaleString()} nodes`, { variant: 'success' })
+    else if (importedCount > 0)
+      addToast(`Already synced — ${importedCount.toLocaleString()} nodes in library`, { variant: 'default' })
+    else
+      addToast('No nodes yet — wait a moment after connecting', { variant: 'default' })
   }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(2,2,10,0.7)', backdropFilter: 'blur(8px)' }}
+      style={{ background: 'rgba(2,2,10,0.75)', backdropFilter: 'blur(10px)' }}
       onClick={onClose}
     >
       <div
-        className="relative w-[520px] max-h-[82vh] flex flex-col"
+        className="relative w-[500px] max-h-[80vh] flex flex-col"
         style={{
-          background: 'linear-gradient(160deg, rgba(13,13,30,0.99) 0%, rgba(9,9,24,0.99) 100%)',
-          border: '1px solid rgba(36,36,80,0.8)',
-          borderRadius: '20px',
-          boxShadow: '0 40px 100px rgba(0,0,0,0.9), 0 0 0 1px rgba(123,111,255,0.12), inset 0 1px 0 rgba(255,255,255,0.04)',
+          background:   'linear-gradient(160deg, rgba(13,13,30,0.99) 0%, rgba(9,9,24,0.99) 100%)',
+          border:       '1px solid rgba(36,36,80,0.8)',
+          borderRadius: '18px',
+          boxShadow:    '0 40px 100px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.04)',
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Top glow */}
-        <div className="absolute top-0 left-0 right-0 h-24 pointer-events-none rounded-t-[20px]"
-             style={{ background: 'radial-gradient(ellipse at 50% -10%, rgba(123,111,255,0.12) 0%, transparent 70%)' }} />
-
         {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-4 flex-shrink-0"
+        <div className="flex items-center justify-between px-5 pt-5 pb-4"
              style={{ borderBottom: '1px solid rgba(24,24,58,0.7)' }}>
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-                 style={{ background: 'rgba(123,111,255,0.15)', border: '1px solid rgba(123,111,255,0.25)', boxShadow: '0 0 16px rgba(123,111,255,0.15)' }}>
-              <BridgePlugIcon />
+                 style={{ background: 'rgba(123,111,255,0.15)', border: '1px solid rgba(123,111,255,0.25)' }}>
+              <BridgeIcon />
             </div>
             <div>
               <div className="text-[13px] font-semibold" style={{ color: 'rgba(220,220,240,0.95)' }}>
                 Auto-Bridge
               </div>
-              <div className="text-[10px]" style={{ color: 'rgba(100,100,150,0.7)' }}>
+              <div className="text-[10px]" style={{ color: 'rgba(100,100,150,0.6)' }}>
                 CORTEX ↔ DCC software — automatic sync
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Server status pill */}
+            {/* Server pill */}
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold"
-                 style={serverRunning
-                   ? { background: 'rgba(52,211,153,0.1)', color: '#34d399', border: '1px solid rgba(52,211,153,0.25)' }
-                   : { background: 'rgba(100,100,150,0.08)', color: 'rgba(100,100,150,0.6)', border: '1px solid rgba(36,36,80,0.5)' }}>
-              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                    style={{ background: serverRunning ? '#34d399' : '#44447a', boxShadow: serverRunning ? '0 0 6px #34d399' : 'none' }} />
-              {serverRunning ? `ws://127.0.0.1:${serverPort ?? 7878}` : 'Server off'}
+                 style={{ background: 'rgba(52,211,153,0.1)', color: '#34d399', border: '1px solid rgba(52,211,153,0.25)' }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#34d399', boxShadow: '0 0 6px #34d399' }} />
+              ws://127.0.0.1:{port ?? 7878}
             </div>
             <button onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
-              style={{ color: 'rgba(100,100,150,0.7)' }}>
+              className="w-7 h-7 flex items-center justify-center rounded-lg"
+              style={{ color: 'rgba(100,100,150,0.6)' }}>
               <CloseIcon />
             </button>
           </div>
         </div>
 
-        {/* Stats row */}
+        {/* Stats */}
         {(clients.length > 0 || importedCount > 0) && (
-          <div className="flex items-center gap-3 px-6 py-2.5 flex-shrink-0"
+          <div className="flex items-center gap-3 px-5 py-2.5"
                style={{ borderBottom: '1px solid rgba(24,24,58,0.5)', background: 'rgba(14,14,34,0.4)' }}>
             {clients.length > 0 && (
-              <StatPill icon={<ConnIcon />} label={`${clients.length} connected`} color="#34d399" />
+              <Pill icon="●" label={`${clients.length} connected`} color="#34d399" />
             )}
             {importedCount > 0 && (
-              <StatPill icon={<NodeIcon />} label={`${importedCount.toLocaleString()} nodes synced`} color="#7b6fff" />
-            )}
-            {lastImportedAt && (
-              <span className="ml-auto text-[9px]" style={{ color: 'rgba(60,60,100,0.7)' }}>
-                last sync {new Date(lastImportedAt).toLocaleTimeString()}
-              </span>
+              <Pill icon="⬡" label={`${importedCount.toLocaleString()} nodes`} color="#7b6fff" />
             )}
           </div>
         )}
 
-        {/* Error */}
-        {error && (
-          <div className="mx-6 mt-3 px-3 py-2 rounded-lg text-[11px]"
-               style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', color: '#f87171' }}>
-            {error}
-          </div>
-        )}
-
-        {/* Detected software list */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2 min-h-0">
-          {isDetecting ? (
-            <div className="flex flex-col items-center py-12 gap-3">
-              <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin"
-                   style={{ borderColor: 'rgba(123,111,255,0.4)', borderTopColor: 'transparent' }} />
-              <span className="text-[11px]" style={{ color: 'rgba(100,100,150,0.6)' }}>Scanning for software…</span>
-            </div>
-          ) : detected.length === 0 ? (
+        {/* DCC list */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2 min-h-0">
+          {detected.length === 0 ? (
             <div className="flex flex-col items-center py-12 gap-2">
-              <div className="text-[28px] opacity-30">🔌</div>
-              <span className="text-[12px]" style={{ color: 'rgba(100,100,150,0.6)' }}>No DCC software detected</span>
-              <button onClick={() => detectSoftware()}
-                className="mt-2 text-[10px] px-3 py-1.5 rounded-lg transition-colors"
-                style={{ background: 'rgba(123,111,255,0.1)', border: '1px solid rgba(123,111,255,0.2)', color: 'rgba(160,155,255,0.8)' }}>
+              <div className="text-[28px] opacity-20">🔌</div>
+              <span className="text-[12px]" style={{ color: 'rgba(100,100,150,0.5)' }}>
+                No DCC software detected
+              </span>
+              <button onClick={detect}
+                className="mt-2 text-[10px] px-3 py-1.5 rounded-lg"
+                style={{ background: 'rgba(123,111,255,0.1)', border: '1px solid rgba(123,111,255,0.2)', color: '#9d96ff' }}>
                 Scan again
               </button>
             </div>
           ) : (
             detected.map(sw => {
-              const color     = SW_COLORS[sw.kind.toLowerCase()] ?? '#7b6fff'
-              const client    = clients.find(c => c.software.toLowerCase().includes(sw.kind.toLowerCase()))
-              const supported = ['houdini','blender','maya','nuke'].includes(sw.kind.toLowerCase())
-              const consoleTip = DCC_CONSOLE[sw.kind.toLowerCase()] ?? 'Python console'
+              const color     = DCC_COLOR[sw.kind] ?? '#7b6fff'
+              const client    = clients.find(c =>
+                c.software.toLowerCase().includes(sw.kind.replace('_', ' '))
+              )
+              const supported = SUPPORTED.includes(sw.kind)
+              const cmd       = execCmds[sw.kind]
+              const live      = !!client
 
               return (
                 <div key={sw.id}
-                  className="flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-all"
+                  className="flex items-center gap-3 px-4 py-3.5 rounded-2xl"
                   style={{
-                    background: client
+                    background: live
                       ? `linear-gradient(135deg, ${color}10 0%, rgba(14,14,34,0.8) 100%)`
                       : 'rgba(14,14,34,0.6)',
-                    border: client
+                    border: live
                       ? `1px solid ${color}35`
                       : '1px solid rgba(24,24,58,0.6)',
-                    boxShadow: client ? `0 0 20px ${color}10` : 'none',
+                    boxShadow: live ? `0 0 20px ${color}0a` : 'none',
                   }}>
 
                   {/* Icon */}
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-[20px]"
-                       style={{ background: `${color}18`, border: `1.5px solid ${color}35` }}>
-                    {SW_ICONS[sw.kind.toLowerCase()] ?? '⬡'}
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-[18px]"
+                       style={{ background: `${color}18`, border: `1.5px solid ${color}30` }}>
+                    <DccIcon kind={sw.kind} color={color} />
                   </div>
 
-                  {/* Info + inline exec command */}
+                  {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-semibold" style={{ color: 'rgba(220,220,240,0.95)' }}>
-                        {sw.displayName}
+                      <span className="text-[13px] font-semibold"
+                            style={{ color: 'rgba(220,220,240,0.95)' }}>
+                        {sw.name}
                       </span>
-                      {client && (
+                      {live && (
                         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
                               style={{ background: `${color}20`, color, border: `1px solid ${color}35` }}>
                           LIVE
@@ -222,46 +190,63 @@ export function BridgePanel({ onClose }: Props) {
                       )}
                     </div>
 
-                    {supported && !client && execCmds[sw.id] ? (
+                    {live ? (
+                      // Connected state
+                      <div className="flex items-center gap-2 mt-1.5">
+                        {importedCount > 0 ? (
+                          <>
+                            <span className="text-[10px]" style={{ color: 'rgba(100,100,150,0.7)' }}>
+                              {importedCount.toLocaleString()} nodes synced
+                            </span>
+                            <button onClick={handleImport} disabled={isImporting}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold"
+                              style={{ background: `${color}20`, border: `1px solid ${color}40`, color }}>
+                              {isImporting
+                                ? <Spinner />
+                                : <CheckIcon />
+                              }
+                              {isImporting ? 'Syncing…' : 'Re-sync'}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <Spinner color={color} />
+                            <span className="text-[10px]" style={{ color: `${color}aa` }}>
+                              Building catalogue…
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    ) : supported && cmd ? (
+                      // Ready to connect: show exec command
                       <div className="flex items-center gap-1.5 mt-1.5">
                         <code className="flex-1 min-w-0 text-[9px] px-2 py-1 rounded truncate"
-                              style={{ background: 'rgba(0,0,0,0.5)', color: `${color}dd`, border: `1px solid ${color}20`, fontFamily: 'monospace' }}>
-                          {execCmds[sw.id]}
+                              style={{ background: 'rgba(0,0,0,0.5)', color: `${color}cc`,
+                                       border: `1px solid ${color}18`, fontFamily: 'monospace' }}>
+                          {cmd}
                         </code>
-                        <button onClick={() => handleCopyCmd(sw.id, sw.displayName)}
+                        <button onClick={() => handleCopy(sw.kind, sw.name)}
                           className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[9px] font-semibold"
-                          style={{ background: `${color}18`, border: `1px solid ${color}35`, color }}>
-                          {copying === sw.id ? <CheckCopyIcon /> : <CopyScriptIcon />}
-                          {copying === sw.id ? 'Copied!' : 'Copy'}
+                          style={{ background: `${color}18`, border: `1px solid ${color}30`, color }}>
+                          {copying === sw.kind ? <CheckIcon /> : <CopyIcon />}
+                          {copying === sw.kind ? 'Copied!' : 'Copy'}
                         </button>
                       </div>
-                    ) : supported && !client ? (
-                      <div className="text-[10px] mt-0.5" style={{ color: 'rgba(100,100,150,0.6)' }}>{consoleTip}</div>
-                    ) : client ? (
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <span className="text-[10px]" style={{ color: 'rgba(100,100,150,0.7)' }}>
-                          Connected · {client.version}
-                        </span>
-                        <button
-                          onClick={handleManualImport}
-                          disabled={isImporting}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all"
-                          style={{ background: `${color}20`, border: `1px solid ${color}40`, color }}>
-                          {isImporting
-                            ? <span className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" />
-                            : <ImportIcon />
-                          }
-                          {isImporting ? 'Importing…' : 'Import Nodes'}
-                        </button>
+                    ) : supported && !cmd ? (
+                      <div className="text-[10px] mt-0.5" style={{ color: 'rgba(100,100,150,0.5)' }}>
+                        {DCC_CONSOLE[sw.kind] ?? 'Python console'}
                       </div>
                     ) : (
-                      <div className="text-[10px] mt-0.5" style={{ color: 'rgba(100,100,150,0.6)' }}>v{sw.version}</div>
+                      <div className="text-[10px] mt-0.5" style={{ color: 'rgba(60,60,100,0.5)' }}>
+                        v{sw.version}
+                      </div>
                     )}
                   </div>
 
                   {!supported && (
-                    <span className="text-[9px] px-2 py-1 rounded-lg flex-shrink-0"
-                          style={{ background: 'rgba(14,14,34,0.8)', color: 'rgba(60,60,100,0.6)', border: '1px solid rgba(24,24,58,0.5)' }}>
+                    <span className="text-[9px] px-2 py-1 rounded flex-shrink-0"
+                          style={{ background: 'rgba(14,14,34,0.8)', color: 'rgba(60,60,100,0.5)',
+                                   border: '1px solid rgba(24,24,58,0.5)' }}>
                       coming soon
                     </span>
                   )}
@@ -272,43 +257,80 @@ export function BridgePanel({ onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-3 px-6 py-4 flex-shrink-0"
+        <div className="flex items-center gap-2 px-5 py-3.5"
              style={{ borderTop: '1px solid rgba(24,24,58,0.7)', background: 'rgba(5,5,14,0.5)' }}>
-          <button onClick={() => detectSoftware()}
-            disabled={isDetecting}
-            className="flex items-center gap-1.5 text-[10px] px-3 py-1.5 rounded-lg transition-colors"
-            style={{ background: 'rgba(14,14,34,0.8)', border: '1px solid rgba(24,24,58,0.7)', color: 'rgba(100,100,150,0.7)' }}>
-            <ScanIcon />
-            {isDetecting ? 'Scanning…' : 'Re-scan'}
+          <button onClick={detect}
+            className="flex items-center gap-1.5 text-[10px] px-3 py-1.5 rounded-lg"
+            style={{ background: 'rgba(14,14,34,0.8)', border: '1px solid rgba(36,36,80,0.5)',
+                     color: 'rgba(140,135,200,0.7)' }}>
+            <ScanIcon /> Re-scan
           </button>
-          <button onClick={handleManualImport}
-            disabled={isImporting}
-            className="flex items-center gap-1.5 text-[10px] px-3 py-1.5 rounded-lg transition-colors"
-            style={{ background: 'rgba(14,14,34,0.8)', border: '1px solid rgba(24,24,58,0.7)', color: 'rgba(100,100,150,0.7)' }}>
-            <DownloadIcon />
+          <button onClick={handleImport} disabled={isImporting}
+            className="flex items-center gap-1.5 text-[10px] px-3 py-1.5 rounded-lg"
+            style={{ background: 'rgba(14,14,34,0.8)', border: '1px solid rgba(36,36,80,0.5)',
+                     color: 'rgba(140,135,200,0.7)' }}>
+            {isImporting ? <Spinner /> : <DownloadIcon />}
             {isImporting ? 'Importing…' : 'Force import'}
           </button>
-          <div className="ml-auto text-[10px]" style={{ color: 'rgba(60,60,100,0.7)' }}>
+          <span className="ml-auto text-[9px]" style={{ color: 'rgba(60,60,100,0.5)' }}>
             Port 7878 · copy script · paste in DCC
-          </div>
+          </span>
         </div>
       </div>
     </div>
   )
 }
 
-function StatPill({ icon, label, color }: { icon: React.ReactNode; label: string; color: string }) {
+// ── Small components ──────────────────────────────────────────────────────────
+
+function Pill({ icon, label, color }: { icon: string; label: string; color: string }) {
   return (
     <div className="flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-lg"
          style={{ background: `${color}10`, border: `1px solid ${color}25`, color }}>
-      {icon}<span>{label}</span>
+      <span className="text-[8px]">{icon}</span><span>{label}</span>
     </div>
   )
 }
 
-function BridgePlugIcon() {
-  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'rgba(160,155,255,0.8)' }}>
-    <path d="M1 9 Q4 5 8 5 Q12 5 15 9"/><line x1="4" y1="9" x2="4" y2="13"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="1" y1="13" x2="15" y2="13"/>
+function Spinner({ color = 'currentColor' }: { color?: string }) {
+  return (
+    <span className="w-2.5 h-2.5 border border-t-transparent rounded-full animate-spin flex-shrink-0"
+          style={{ borderColor: `${color}60`, borderTopColor: 'transparent' }} />
+  )
+}
+
+function DccIcon({ kind, color }: { kind: string; color: string }) {
+  const s = { stroke: color, fill: 'none', strokeWidth: 1.5, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
+  if (kind === 'houdini') return (
+    <svg width="22" height="22" viewBox="0 0 22 22" {...{ fill: 'none' }}>
+      <path d="M11 2L20 7V15L11 20L2 15V7Z" {...s}/>
+      <path d="M7 9V13M11 7V15M15 9V13" {...s} strokeWidth={1.3}/>
+    </svg>
+  )
+  if (kind === 'blender') return (
+    <svg width="22" height="22" viewBox="0 0 22 22" {...{ fill: 'none' }}>
+      <circle cx="13" cy="11" r="5" {...s}/><circle cx="13" cy="11" r="2" {...s} strokeWidth={1}/>
+      <path d="M4 9H13M6 7L4 9L6 11" {...s} strokeWidth={1.4}/>
+    </svg>
+  )
+  if (kind === 'maya') return (
+    <svg width="22" height="22" viewBox="0 0 22 22" {...{ fill: 'none' }}>
+      <path d="M4 17V5L11 11L18 5V17" {...s}/>
+    </svg>
+  )
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" {...{ fill: 'none' }}>
+      <path d="M11 3L19 7.5V14.5L11 19L3 14.5V7.5Z" {...s}/>
+    </svg>
+  )
+}
+
+function BridgeIcon() {
+  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="rgba(160,155,255,0.8)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1 9 Q4 5 8 5 Q12 5 15 9"/>
+    <line x1="4" y1="9" x2="4" y2="13"/>
+    <line x1="12" y1="9" x2="12" y2="13"/>
+    <line x1="1" y1="13" x2="15" y2="13"/>
   </svg>
 }
 function CloseIcon() {
@@ -316,13 +338,13 @@ function CloseIcon() {
     <line x1="3" y1="3" x2="10" y2="10"/><line x1="10" y1="3" x2="3" y2="10"/>
   </svg>
 }
-function CopyScriptIcon() {
+function CopyIcon() {
   return <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3.5" y="3.5" width="6" height="6" rx="1"/>
     <path d="M3.5 7.5H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h4.5a1 1 0 0 1 1 1v1.5"/>
   </svg>
 }
-function CheckCopyIcon() {
+function CheckIcon() {
   return <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <path d="M1.5 5.5l3 3 5-5"/>
   </svg>
@@ -335,40 +357,5 @@ function ScanIcon() {
 function DownloadIcon() {
   return <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
     <path d="M5.5 1v5.5"/><path d="M3 5l2.5 2.5L8 5"/><line x1="1.5" y1="9.5" x2="9.5" y2="9.5"/>
-  </svg>
-}
-function ConnIcon() {
-  return <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-    <circle cx="5" cy="5" r="2"/><path d="M5 1v1M5 8v1M1 5h1M8 5h1"/>
-  </svg>
-}
-function NodeIcon() {
-  return <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5 1L9 3.5V6.5L5 9L1 6.5V3.5Z"/>
-  </svg>
-}
-function HoudiniIcon() {
-  return <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-    <path d="M11 2L20 7V15L11 20L2 15V7Z" stroke="#FF6B35" strokeWidth="1.5" strokeLinejoin="round"/>
-    <path d="M7 9V13M11 7V15M15 9V13" stroke="#FF6B35" strokeWidth="1.3" strokeLinecap="round"/>
-  </svg>
-}
-function BlenderIcon() {
-  return <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-    <circle cx="13" cy="11" r="5" stroke="#E87D0D" strokeWidth="1.5"/>
-    <circle cx="13" cy="11" r="2" stroke="#E87D0D" strokeWidth="1"/>
-    <path d="M4 9H13M6 7L4 9L6 11" stroke="#E87D0D" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-}
-function MayaIcon() {
-  return <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-    <path d="M4 17V5L11 11L18 5V17" stroke="#00AEEF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-}
-function NukeIcon() {
-  return <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-    <circle cx="11" cy="11" r="8" stroke="#B5C918" strokeWidth="1.5"/>
-    <path d="M7 11h8M11 7v8" stroke="#B5C918" strokeWidth="1.3" strokeLinecap="round"/>
-    <circle cx="11" cy="11" r="2" fill="#B5C918" fillOpacity="0.3" stroke="#B5C918" strokeWidth="1"/>
   </svg>
 }

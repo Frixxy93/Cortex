@@ -91,15 +91,14 @@ pub fn run() {
 
             let state = AppState::new(pool);
 
-            // Auto-start bridge WebSocket server on launch.
-            // Nodes are buffered; frontend listens for "bridge:nodes-ready" and auto-drains.
+            // Auto-start VFX bridge. Emits "bridge:ready" with node count when DCC sends catalogue.
             {
                 let handle = app.handle().clone();
-                if let Err(e) = state.bridge_engine.start_server(move |nodes| {
-                    tracing::info!("Bridge: {} nodes buffered — emitting bridge:nodes-ready", nodes.len());
-                    let _ = handle.emit("bridge:nodes-ready", nodes.len());
+                if let Err(e) = state.bridge_engine.start(move |count| {
+                    tracing::info!("Bridge: {count} nodes buffered — emitting bridge:ready");
+                    let _ = handle.emit("bridge:ready", count);
                 }) {
-                    tracing::warn!("Bridge auto-start failed: {e}");
+                    tracing::warn!("Bridge start failed: {e}");
                 }
             }
 
@@ -150,16 +149,12 @@ pub fn run() {
             // Import
             commands::import::import_file,
             // VFX Bridge
-            commands::bridge::bridge_detect_software,
             commands::bridge::bridge_start,
             commands::bridge::bridge_stop,
-            commands::bridge::bridge_connected_clients,
-            commands::bridge::bridge_drain_nodes,
-            commands::bridge::bridge_get_script,
-            commands::bridge::bridge_get_exec_cmd,
-            commands::bridge::bridge_install_auto,
-            commands::bridge::bridge_uninstall_auto,
-            commands::bridge::bridge_is_installed,
+            commands::bridge::bridge_clients,
+            commands::bridge::bridge_detect,
+            commands::bridge::bridge_drain,
+            commands::bridge::bridge_exec_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running CORTEX");

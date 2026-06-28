@@ -54,6 +54,8 @@ export const useNodeStore = create<NodeStore>()(
       try {
         const nodes = await NodeService.listAll()
         set(s => {
+          // Full replace so bridge-imported nodes properly displace seed nodes
+          s.nodes = {}
           for (const node of nodes) s.nodes[node.id] = node
           s.isLoading = false
         })

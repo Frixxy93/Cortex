@@ -29,7 +29,7 @@ function CortexApp() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [bridgeOpen,   setBridgeOpen]   = useState(false)
   const { isAdmin, unlock, lock } = useAdminStore()
-  const { initAutoListener } = useBridgeStore()
+  const { initListener } = useBridgeStore()
   const { loadVaults, activeVaultId } = useVaultStore()
   const { loadNodes } = useNodeStore()
   const { loadGraphs, setActiveGraph, saveGraph, undo, redo, activeGraph, addNode, activeGraphId } = useGraphStore()
@@ -47,9 +47,9 @@ function CortexApp() {
     return () => window.removeEventListener('keydown', handleAdminKey)
   }, [handleAdminKey])
 
-  // Always-on bridge listener — must live here, not inside BridgePanel
+  // Always-on bridge listener — must live at app level, not inside BridgePanel
   useEffect(() => {
-    const unlisten = initAutoListener()
+    const unlisten = initListener()
     return unlisten
   }, [])
 

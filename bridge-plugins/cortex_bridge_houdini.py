@@ -1,219 +1,124 @@
+"""CORTEX Bridge — Houdini
+Run inside Houdini's Python Shell:
+  exec(open(r"C:/Users/.../Documents/cortex-bridge/cortex_bridge_houdini.py").read())
 """
-CORTEX Auto-Bridge — Houdini
-=============================
-Drop into Houdini startup OR let CORTEX install it automatically.
-No external dependencies — uses Python's built-in socket module.
-
-Auto-installed path (Windows):
-  %USERPROFILE%\\Documents\\houdini{ver}\\scripts\\pythonstartup.py
-"""
-
 import json, socket, threading, struct, base64, os, time, atexit
 
-CORTEX_HOST = "127.0.0.1"
-CORTEX_PORT = 7878
-RETRY_SECS  = 12   # reconnect delay when CORTEX not running
+HOST, PORT = "127.0.0.1", 7878
+_sock, _running = None, False
 
-_sock    = None
-_thread  = None
-_running = False
-
-
-# ─── Minimal WebSocket client (RFC 6455) ─────────────────────────────────────
-
-def _ws_handshake(sock):
-    key = base64.b64encode(os.urandom(16)).decode()
-    req = (
-        f"GET / HTTP/1.1\r\n"
-        f"Host: {CORTEX_HOST}:{CORTEX_PORT}\r\n"
-        f"Upgrade: websocket\r\nConnection: Upgrade\r\n"
-        f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
-    )
-    sock.sendall(req.encode())
-    resp = b""
-    while b"\r\n\r\n" not in resp:
-        resp += sock.recv(1024)
-    if b"101" not in resp:
-        raise ConnectionError("WebSocket upgrade failed")
-
-
-def _ws_send(sock, text):
-    data   = text.encode("utf-8")
-    n      = len(data)
-    mask   = os.urandom(4)
-    masked = bytes(b ^ mask[i % 4] for i, b in enumerate(data))
-    if n <= 125:
-        header = bytes([0x81, 0x80 | n]) + mask
-    elif n <= 65535:
-        header = bytes([0x81, 0xFE]) + struct.pack(">H", n) + mask
-    else:
-        header = bytes([0x81, 0xFF]) + struct.pack(">Q", n) + mask
-    sock.sendall(header + masked)
-
-
-def _ws_recv(sock):
-    def rx(n):
-        buf = b""
-        while len(buf) < n:
-            chunk = sock.recv(n - len(buf))
-            if not chunk:
-                raise ConnectionError("Connection closed")
-            buf += chunk
-        return buf
-    h      = rx(2)
-    opcode = h[0] & 0x0F
-    masked = bool(h[1] & 0x80)
-    plen   = h[1] & 0x7F
-    if plen == 126: plen = struct.unpack(">H", rx(2))[0]
-    elif plen == 127: plen = struct.unpack(">Q", rx(8))[0]
-    mkey = rx(4) if masked else b""
-    pay  = rx(plen)
-    if masked: pay = bytes(b ^ mkey[i % 4] for i, b in enumerate(pay))
-    if opcode == 0x8: raise ConnectionError("Server closed")
-    if opcode == 0x9: _ws_send(sock, ""); return None
-    return pay.decode("utf-8", "replace") if opcode in (0x1, 0x2) else None
-
-
-# ─── Houdini node catalogue ───────────────────────────────────────────────────
-
-CAT_MAP = {
+CAT = {
     "Sop":"sop","Vop":"vop","Dop":"dop","Chop":"chop",
     "Lop":"lop","Top":"top","Cop2":"cop","Driver":"rop",
     "Object":"object","Shop":"shop",
 }
-PTYPE_MAP = {}
 
-def _init_ptype_map():
-    global PTYPE_MAP
-    try:
-        import hou
-        PTYPE_MAP = {
-            hou.parmTemplateType.Int:    "integer",
-            hou.parmTemplateType.Float:  "float",
-            hou.parmTemplateType.String: "string",
-            hou.parmTemplateType.Toggle: "boolean",
-            hou.parmTemplateType.Menu:   "enum",
-            hou.parmTemplateType.Button: "button",
-            hou.parmTemplateType.Ramp:   "ramp",
-        }
-    except: pass
+# ── WebSocket helpers ─────────────────────────────────────────────────────────
 
-def _collect_parms(templates, acc, limit=30):
-    try:
-        import hou
-        for pt in templates:
-            if len(acc) >= limit: break
-            try:
-                t = pt.type()
-                if t in (hou.parmTemplateType.Folder, hou.parmTemplateType.FolderSet):
-                    _collect_parms(pt.parmTemplates(), acc, limit)
-                elif t not in (hou.parmTemplateType.Separator, hou.parmTemplateType.Label):
-                    dv = None
-                    try:
-                        d  = pt.defaultValue()
-                        dv = list(d)[0] if isinstance(d, (list, tuple)) and len(d)==1 else (list(d) if isinstance(d,(list,tuple)) else d)
-                    except: pass
-                    opts = None
-                    if t == hou.parmTemplateType.Menu:
-                        try: opts = [{"value": v, "label": l} for v, l in zip(pt.menuItems(), pt.menuLabels())]
-                        except: pass
-                    acc.append({"name": pt.name(), "label": pt.label(),
-                                "ptype": PTYPE_MAP.get(t, "float"),
-                                "default": dv, "options": opts})
-            except: pass
-    except: pass
+def _hs(sock):
+    k = base64.b64encode(os.urandom(16)).decode()
+    sock.sendall((
+        f"GET / HTTP/1.1\r\nHost: {HOST}:{PORT}\r\n"
+        "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {k}\r\nSec-WebSocket-Version: 13\r\n\r\n"
+    ).encode())
+    r = b""
+    while b"\r\n\r\n" not in r:
+        r += sock.recv(4096)
+    if b"101" not in r:
+        raise ConnectionError("WS upgrade failed")
 
-def _build_catalogue():
-    _init_ptype_map()
+def _send(sock, obj):
+    d = json.dumps(obj).encode()
+    n = len(d)
+    m = os.urandom(4)
+    e = bytes(a ^ b for a, b in zip(d, (m * ((n >> 2) + 1))[:n]))
+    if   n <= 125:   h = bytes([0x81, 0x80 | n]) + m
+    elif n <= 65535: h = bytes([0x81, 0xFE]) + struct.pack(">H", n) + m
+    else:            h = bytes([0x81, 0xFF]) + struct.pack(">Q", n) + m
+    sock.sendall(h + e)
+
+def _recv(sock):
+    def rx(n):
+        b = b""
+        while len(b) < n:
+            c = sock.recv(n - len(b))
+            if not c: raise ConnectionError
+            b += c
+        return b
+    h  = rx(2); op = h[0] & 0xF; pl = h[1] & 0x7F
+    if pl == 126: pl = struct.unpack(">H", rx(2))[0]
+    elif pl == 127: pl = struct.unpack(">Q", rx(8))[0]
+    mk = rx(4) if h[1] & 0x80 else b""
+    p  = rx(pl)
+    if mk: p = bytes(a ^ b for a, b in zip(p, (mk * ((pl >> 2) + 1))[:pl]))
+    if op == 0x8: raise ConnectionError("close")
+    if op == 0x9: _send(sock, {"type": "PONG"}); return None
+    return p.decode("utf-8", "replace") if op in (0x1, 0x2) else None
+
+# ── Node catalogue (no parmTemplateGroup — fast) ──────────────────────────────
+
+def _catalogue():
     nodes = []
     try:
         import hou
-        for cat_name, category in hou.nodeTypeCategories().items():
-            mapped = CAT_MAP.get(cat_name, cat_name.lower())
-            for _, nt in category.nodeTypes().items():
+        for cat, ctx in hou.nodeTypeCategories().items():
+            mapped = CAT.get(cat, cat.lower())
+            for _, nt in ctx.nodeTypes().items():
                 try:
                     if nt.hidden(): continue
-                    nc      = nt.nameComponents()
-                    name    = (nc[1] if nc and len(nc) > 1 else None) or nt.name()
-                    ns      = nc[0] if nc else ""
-                    display = nt.description() or name
-                    tags    = [str(v).lower().replace(" ", "_")
-                               for v in list(nt.tags().values()) if v][:6]
-                    if ns and ns not in tags: tags.insert(0, ns)
-                    parms = []
-                    ptg = nt.parmTemplateGroup()
-                    if ptg: _collect_parms(ptg.parmTemplates(), parms)
+                    nc   = nt.nameComponents()
+                    name = (nc[1] if nc and len(nc) > 1 else None) or nt.name()
+                    desc = nt.description() or name
                     nodes.append({
-                        "name": name, "displayName": display, "category": mapped,
-                        "description": f"{display} ({mapped.upper()})", "tags": tags,
-                        "maxInputs":  int(nt.maxInputs() or 0),
-                        "maxOutputs": int(nt.maxOutputs() or 1),
-                        "parameters": parms,
+                        "name":        name,
+                        "displayName": desc,
+                        "category":    mapped,
+                        "description": f"{desc} ({mapped.upper()})",
+                        "maxInputs":   min(int(nt.maxInputs()  or 0), 8),
+                        "maxOutputs":  min(int(nt.maxOutputs() or 1), 4),
                     })
                 except: pass
     except: pass
     return nodes
 
-
-# ─── Main loop (with auto-retry) ─────────────────────────────────────────────
+# ── Main loop ─────────────────────────────────────────────────────────────────
 
 def _loop():
     global _sock, _running
     while _running:
         try:
-            _sock = socket.create_connection((CORTEX_HOST, CORTEX_PORT), timeout=4)
+            _sock = socket.create_connection((HOST, PORT), timeout=5)
             _sock.settimeout(None)
-            _ws_handshake(_sock)
-
+            _hs(_sock)
             import hou
-            _ws_send(_sock, json.dumps({
+            _send(_sock, {
                 "type": "HELLO", "software": "Houdini",
                 "version": hou.applicationVersionString(),
-                "clientId": f"houdini-{os.getpid()}",
-            }))
-
+                "clientId": f"hou-{os.getpid()}",
+            })
             while _running:
-                text = _ws_recv(_sock)
-                if text is None: continue
-                msg = json.loads(text)
-                t   = msg.get("type", "")
-
-                if t == "WELCOME":
-                    pass  # auto-bridge: server immediately sends REQUEST_NODES
-
-                elif t == "REQUEST_NODES":
-                    nodes = _build_catalogue()
-                    _ws_send(_sock, json.dumps({
-                        "type": "NODE_CATALOGUE", "nodes": nodes, "total": len(nodes)
-                    }))
-
-                elif t == "REQUEST_SCENE":
-                    _ws_send(_sock, json.dumps({"type":"SCENE_GRAPH","nodes":[],"connections":[]}))
-
+                msg = _recv(_sock)
+                if msg is None: continue
+                t = json.loads(msg).get("type", "")
+                if t == "REQUEST_NODES":
+                    ns = _catalogue()
+                    _send(_sock, {"type": "NODE_CATALOGUE", "nodes": ns, "total": len(ns)})
                 elif t == "PING":
-                    _ws_send(_sock, json.dumps({"type":"PONG"}))
-
-        except ConnectionRefusedError:
-            # CORTEX not running yet — wait and retry silently
-            pass
-        except Exception:
-            pass
+                    _send(_sock, {"type": "PONG"})
+        except: pass
         finally:
             if _sock:
                 try: _sock.close()
                 except: pass
                 _sock = None
-
-        if _running:
-            time.sleep(RETRY_SECS)
-
+        if _running: time.sleep(10)
 
 def start():
-    global _thread, _running
+    global _running
     if _running: return
     _running = True
-    _thread  = threading.Thread(target=_loop, daemon=True, name="cortex-bridge")
-    _thread.start()
+    threading.Thread(target=_loop, daemon=True, name="cortex").start()
 
 def stop():
     global _running
@@ -223,6 +128,4 @@ def stop():
         except: pass
 
 atexit.register(stop)
-
-# ─── Auto-start ───────────────────────────────────────────────────────────────
 start()

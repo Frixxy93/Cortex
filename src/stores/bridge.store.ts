@@ -4,152 +4,86 @@ import { BridgeService, DetectedSoftware, ConnectedClient } from '@/services/bri
 import { useNodeStore } from '@/stores/node.store'
 
 interface BridgeState {
-  serverRunning:    boolean
-  serverPort:       number | null
-  detected:         DetectedSoftware[]
-  clients:          ConnectedClient[]
-  importedCount:    number
-  lastImportedAt:   string | null
-  isDetecting:      boolean
-  isImporting:      boolean
-  installingId:     string | null   // which softwareId is being installed
-  error:            string | null
+  port:          number | null
+  detected:      DetectedSoftware[]
+  clients:       ConnectedClient[]
+  importedCount: number
+  isImporting:   boolean
+  execCmds:      Record<string, string>   // kind → exec one-liner
 
-  startServer:      () => Promise<void>
-  stopServer:       () => Promise<void>
-  detectSoftware:   () => Promise<void>
-  refreshClients:   () => Promise<void>
-  importNodes:      () => Promise<number>
-  installAuto:      (softwareId: string) => Promise<void>
-  uninstallAuto:    (softwareId: string) => Promise<void>
-  checkInstalled:   (softwareId: string) => Promise<boolean>
-  initAutoListener: () => () => void   // returns unlisten fn
+  detect:         () => Promise<void>
+  refreshClients: () => Promise<void>
+  importNodes:    () => Promise<number>
+  fetchExecCmd:   (kind: string) => Promise<void>
+
+  /** Call once in App.tsx. Returns unlisten cleanup. */
+  initListener:   () => () => void
 }
 
 export const useBridgeStore = create<BridgeState>()(
   immer((set, get) => ({
-    serverRunning:  false,
-    serverPort:     null,
-    detected:       [],
-    clients:        [],
-    importedCount:  0,
-    lastImportedAt: null,
-    isDetecting:    false,
-    isImporting:    false,
-    installingId:   null,
-    error:          null,
+    port:          7878,
+    detected:      [],
+    clients:       [],
+    importedCount: 0,
+    isImporting:   false,
+    execCmds:      {},
 
-    startServer: async () => {
-      try {
-        const port = await BridgeService.start()
-        set(s => { s.serverRunning = true; s.serverPort = port; s.error = null })
-      } catch (e) {
-        set(s => { s.error = String(e) })
-      }
-    },
-
-    stopServer: async () => {
-      try {
-        await BridgeService.stop()
-        set(s => { s.serverRunning = false; s.serverPort = null; s.clients = [] })
-      } catch (e) {
-        set(s => { s.error = String(e) })
-      }
-    },
-
-    detectSoftware: async () => {
-      set(s => { s.isDetecting = true; s.error = null })
+    detect: async () => {
       try {
         const detected = await BridgeService.detect()
-        // Check install status for each detected app
-        const withInstall = await Promise.all(
-          detected.map(async sw => ({
-            ...sw,
-            isInstalled: await BridgeService.isInstalled(sw.id).catch(() => false),
-          }))
-        )
-        set(s => { s.detected = withInstall; s.isDetecting = false })
-      } catch (e) {
-        set(s => { s.isDetecting = false; s.error = String(e) })
-      }
+        set(s => { s.detected = detected })
+      } catch {}
     },
 
     refreshClients: async () => {
       try {
-        const clients = await BridgeService.connectedClients()
-        set(s => {
-          s.clients = clients
-          for (const sw of s.detected) {
-            sw.isConnected = clients.some(c =>
-              c.software.toLowerCase().includes(sw.kind.toLowerCase())
-            )
-          }
-        })
+        const clients = await BridgeService.clients()
+        set(s => { s.clients = clients })
       } catch {}
     },
 
     importNodes: async () => {
-      set(s => { s.isImporting = true; s.error = null })
+      set(s => { s.isImporting = true })
       try {
-        const count = await BridgeService.drainNodes()
+        const count = await BridgeService.drain()
         set(s => {
-          s.importedCount  = count
-          s.isImporting    = false
-          s.lastImportedAt = count > 0 ? new Date().toISOString() : s.lastImportedAt
+          s.importedCount = count > 0 ? count : s.importedCount
+          s.isImporting   = false
         })
         if (count > 0) {
           await useNodeStore.getState().loadNodes()
         }
         return count
-      } catch (e) {
-        set(s => { s.isImporting = false; s.error = String(e) })
+      } catch {
+        set(s => { s.isImporting = false })
         return 0
       }
     },
 
-    installAuto: async (softwareId) => {
-      set(s => { s.installingId = softwareId; s.error = null })
+    fetchExecCmd: async (kind: string) => {
+      if (get().execCmds[kind]) return
       try {
-        await BridgeService.installAuto(softwareId)
-        set(s => {
-          s.installingId = null
-          const sw = s.detected.find(d => d.id === softwareId)
-          if (sw) sw.isInstalled = true
-        })
-      } catch (e) {
-        set(s => { s.installingId = null; s.error = String(e) })
-      }
+        const cmd = await BridgeService.execCmd(kind)
+        set(s => { s.execCmds[kind] = cmd })
+      } catch {}
     },
 
-    uninstallAuto: async (softwareId) => {
-      set(s => { s.installingId = softwareId })
-      try {
-        await BridgeService.uninstallAuto(softwareId)
-        set(s => {
-          s.installingId = null
-          const sw = s.detected.find(d => d.id === softwareId)
-          if (sw) sw.isInstalled = false
-        })
-      } catch (e) {
-        set(s => { s.installingId = null; s.error = String(e) })
-      }
-    },
-
-    checkInstalled: async (softwareId) => {
-      try { return await BridgeService.isInstalled(softwareId) }
-      catch { return false }
-    },
-
-    initAutoListener: () => {
+    initListener: () => {
       let unlisten: (() => void) | undefined
-      BridgeService.onNodesReady(async (_count) => {
-        await get().importNodes()
+
+      BridgeService.onReady(async (count) => {
+        if (count === 0) return
         await get().refreshClients()
-      }).then(fn => {
-        unlisten = fn as unknown as () => void
-        // Drain anything buffered before the listener registered (race condition on startup)
-        get().importNodes()
-      })
+        const imported = await get().importNodes()
+        if (imported > 0) {
+          try {
+            const { addToast } = (await import('@/stores/ui.store')).useUiStore.getState()
+            addToast(`Bridge: ${imported.toLocaleString()} nodes imported`, { variant: 'success' })
+          } catch {}
+        }
+      }).then(fn => { unlisten = fn as unknown as () => void })
+
       return () => { unlisten?.() }
     },
   }))
