@@ -125,12 +125,4 @@ export function NodeDetail({ node }: Props) {
           </div>
         ) : (
           <button onClick={() => setConfirmDelete(true)}
-            className="w-full py-1.5 rounded-lg text-[11px] text-cx-text-muted hover:text-cx-error transition-colors">
-            Delete Node
-          </button>
-        )}
-      </div>
-      )}
-    </div>
-  )
-}
+            className="w-full py-1.5 rounded-lg text-[11px] text-cx-text-muted

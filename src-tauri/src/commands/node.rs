@@ -57,11 +57,3 @@ pub async fn list_all_nodes(state: State<'_, AppState>) -> Result<Vec<Node>, Cor
 pub async fn reseed_nodes(state: State<'_, AppState>) -> Result<usize, CortexError> {
     state.node_engine.reseed_nodes()
 }
-
-/// Reads every node currently in the database and writes them to
-/// `src-tauri/src/data/nodes_seed.sql` as INSERT statements.
-/// After calling this, rebuild CORTEX — every user will have these nodes on install.
-#[tauri::command]
-pub async fn generate_node_seed(state: State<'_, AppState>) -> Result<usize, CortexError> {
-    state.node_engine.generate_seed_sql()
-}

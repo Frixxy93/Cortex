@@ -58,8 +58,4 @@ jobs:
             See commit history for details.
 
             ## Install
-            Download **CORTEX_${{ github.ref_name }}_x64-setup.exe** below and run it.
-            Existing installs will update automatically on next launch.
-          releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.args }}
+            Download **CORTEX_${{ github.ref_name }}_x64-

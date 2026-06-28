@@ -12,5 +12,4 @@ export const NodeService = {
   clearVault: (vaultId: string) => call<number>('clear_vault_nodes', { vaultId }),
   clearAll: () => call<number>('clear_all_nodes', {}),
   reseedAll: () => call<number>('reseed_nodes', {}),
-  generateSeed: () => call<number>('generate_node_seed', {}),
-}
+  

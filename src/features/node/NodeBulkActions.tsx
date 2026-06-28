@@ -50,10 +50,4 @@ export function NodeBulkActions() {
       ) : (
         <button onClick={() => setConfirmClear(true)}
           className="w-full py-1.5 rounded-lg border border-cx-border text-[11px] text-cx-text-muted
-                     hover:text-cx-error hover:border-cx-error/30 transition-colors">
-          Clear All Nodes
-        </button>
-      )}
-    </div>
-  )
-}
+                     hover:text-cx-error hover:border

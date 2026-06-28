@@ -133,27 +133,4 @@ pub fn run() {
             commands::graph::delete_graph,
             // Relationships
             commands::relationship::get_relationships,
-            commands::relationship::create_relationship,
-            commands::relationship::delete_relationship,
-            // Search
-            commands::search::search,
-            // Assets
-            commands::asset::list_assets,
-            commands::asset::import_asset,
-            // Analytics
-            commands::analytics::get_analytics,
-            commands::analytics::track_event,
-            // AI
-            commands::ai::ai_chat,
-            // Import
-            commands::import::import_file,
-            // VFX Bridge
-            commands::bridge::bridge_start,
-            commands::bridge::bridge_stop,
-            commands::bridge::bridge_clients,
-            commands::bridge::bridge_detect,
-            commands::bridge::bridge_exec_cmd,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running CORTEX");
-}
+ 
