@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAutoUpdate } from '@/hooks/useAutoUpdate'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { LeftSidebar } from '@/components/panels/LeftSidebar'
 import { ContentPanel } from '@/components/panels/ContentPanel'
@@ -22,6 +23,7 @@ const queryClient = new QueryClient({
 })
 
 function CortexApp() {
+  useAutoUpdate()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [bridgeOpen,   setBridgeOpen]   = useState(false)
   const { loadVaults, activeVaultId } = useVaultStore()

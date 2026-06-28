@@ -45,6 +45,12 @@
   "plugins": {
     "fs": {
       "requireLiteralLeadingDot": false
+    },
+    "updater": {
+      "pubkey": "UPDATER_PUBLIC_KEY_PLACEHOLDER",
+      "endpoints": [
+        "https://github.com/Frixxy93/Cortex/releases/latest/download/latest.json"
+      ]
     }
   }
 }
