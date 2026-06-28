@@ -69,7 +69,7 @@ export function BridgePanel({ onClose }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center"
          style={{ background: 'rgba(0,0,0,0.75)' }}
          onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="relative flex flex-col rounded-2xl overflow-hidden"
+      <div className="relative flex flex-col rounded-2xl overflow-hidden animate-modal-in"
            style={{
              width: 540, maxHeight: '86vh',
              background: 'rgba(10,10,22,0.99)',

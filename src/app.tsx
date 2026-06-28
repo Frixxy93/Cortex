@@ -17,6 +17,10 @@ import { HomeDashboard } from '@/features/home/HomeDashboard'
 import { ToastContainer } from '@/components/ui/Toast'
 import { SettingsPanel } from '@/components/panels/SettingsPanel'
 import { BridgePanel } from '@/components/panels/BridgePanel'
+import { SplashScreen } from '@/components/SplashScreen'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { ShortcutsPanel } from '@/components/panels/ShortcutsPanel'
+import { OnboardingFlow } from '@/components/OnboardingFlow'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -53,7 +57,7 @@ function AdminPasswordModal({ onClose, onUnlock }: {
       onClick={e => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="flex flex-col gap-4 rounded-2xl px-7 py-6"
+        className="flex flex-col gap-4 rounded-2xl px-7 py-6 animate-modal-in"
         style={{
           width: 340,
           background: 'rgba(10,10,22,0.99)',
@@ -129,11 +133,14 @@ function AdminPasswordModal({ onClose, onUnlock }: {
 
 function CortexApp() {
   useAutoUpdate()
-  const [settingsOpen,  setSettingsOpen]  = useState(false)
-  const [bridgeOpen,    setBridgeOpen]    = useState(false)
-  const [adminPrompt,   setAdminPrompt]   = useState(false)
+  const [splash,         setSplash]        = useState(true)
+  const [settingsOpen,   setSettingsOpen]  = useState(false)
+  const [bridgeOpen,     setBridgeOpen]    = useState(false)
+  const [adminPrompt,    setAdminPrompt]   = useState(false)
+  const [shortcutsOpen,  setShortcutsOpen] = useState(false)
+  const [onboarding,     setOnboarding]    = useState(false)
   const { isAdmin, unlock, lock } = useAdminStore()
-  const { loadVaults, activeVaultId } = useVaultStore()
+  const { loadVaults, activeVaultId, vaults } = useVaultStore()
   const { loadNodes } = useNodeStore()
   const { loadGraphs, setActiveGraph, saveGraph, undo, redo, activeGraph, addNode, activeGraphId } = useGraphStore()
   const { openCommandPalette, closeCommandPalette, setActiveNav, activeNavId, rightPanelOpen } = useUiStore()
@@ -168,6 +175,16 @@ function CortexApp() {
     })
   }, [])
 
+  // Show onboarding the first time a vault is created
+  const prevVaultCount = useRef(0)
+  useEffect(() => {
+    const count = vaults.length
+    if (prevVaultCount.current === 0 && count === 1 && !localStorage.getItem('cortex:onboarded')) {
+      setOnboarding(true)
+    }
+    prevVaultCount.current = count
+  }, [vaults.length])
+
   // When active vault changes, load its graphs (nodes stay global)
   useEffect(() => {
     if (!activeVaultId) return
@@ -201,6 +218,9 @@ function CortexApp() {
         e.preventDefault()
         window.dispatchEvent(new CustomEvent('cortex:toggle-node-picker'))
       }
+      if (e.key === '?' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        setShortcutsOpen(s => !s)
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -215,14 +235,31 @@ function CortexApp() {
         <LeftSidebar
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenBridge={() => setBridgeOpen(true)}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
         />
         {isHome ? (
-          <HomeDashboard />
+          <ErrorBoundary label="Home Dashboard">
+            <div key="home" className="flex-1 min-w-0 h-full flex flex-col animate-page-in">
+              <HomeDashboard />
+            </div>
+          </ErrorBoundary>
         ) : (
           <>
-            <ContentPanel />
-            <GraphCanvas />
-            {rightPanelOpen && <RightPanel />}
+            <ErrorBoundary label="Content Panel">
+              <div className="animate-slide-left-p h-full">
+                <ContentPanel />
+              </div>
+            </ErrorBoundary>
+            <ErrorBoundary label="Graph Canvas">
+              <GraphCanvas />
+            </ErrorBoundary>
+            {rightPanelOpen && (
+              <ErrorBoundary label="Node Inspector">
+                <div className="animate-slide-right h-full">
+                  <RightPanel />
+                </div>
+              </ErrorBoundary>
+            )}
           </>
         )}
       </div>
@@ -236,14 +273,19 @@ function CortexApp() {
           onUnlock={(pw) => unlock(pw)}
         />
       )}
+      {shortcutsOpen && <ShortcutsPanel onClose={() => setShortcutsOpen(false)} />}
+      {onboarding    && <OnboardingFlow onDone={() => setOnboarding(false)} />}
+      {splash && <SplashScreen onDone={() => setSplash(false)} />}
     </div>
   )
 }
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <CortexApp />
-    </QueryClientProvider>
+    <ErrorBoundary label="CORTEX">
+      <QueryClientProvider client={queryClient}>
+        <CortexApp />
+      </QueryClientProvider>
+    </ErrorBoundary>
   )
 }

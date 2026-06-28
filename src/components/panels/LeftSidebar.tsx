@@ -33,7 +33,7 @@ const SOFTWARE_META: Record<string, { label: string; short: string }> = {
   substance: { label: 'Substance 3D', short: 'S' },
 }
 
-export function LeftSidebar({ onOpenSettings, onOpenBridge }: { onOpenSettings?: () => void; onOpenBridge?: () => void }) {
+export function LeftSidebar({ onOpenSettings, onOpenBridge, onOpenShortcuts }: { onOpenSettings?: () => void; onOpenBridge?: () => void; onOpenShortcuts?: () => void }) {
   const { vaults, activeVaultId, setActiveVault, deleteVault, updateVault } = useVaultStore()
   const getVaultNodes = useNodeStore(s => s.getVaultNodes)
   const { openCommandPalette, toggleNav, setActiveNav, activeNavId, addToast, setTagFilter, activeTagFilter } = useUiStore()
@@ -254,6 +254,16 @@ export function LeftSidebar({ onOpenSettings, onOpenBridge }: { onOpenSettings?:
               </svg>
             </button>
           )}
+          <button onClick={onOpenShortcuts} title="Keyboard shortcuts (?)
+"
+            className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150
+                       text-cx-text-muted hover:text-cx-text hover:bg-cx-elevated/80 flex-shrink-0">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="7" cy="7" r="5.5"/>
+              <path d="M5.5 5.5a1.5 1.5 0 012.5 1c0 1-1.5 1.5-1.5 2.5"/>
+              <circle cx="7" cy="10.5" r="0.5" fill="currentColor" stroke="none"/>
+            </svg>
+          </button>
           <button onClick={onOpenSettings} title="Settings"
             className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150
                        text-cx-text-muted hover:text-cx-text hover:bg-cx-elevated/80 flex-shrink-0">

@@ -297,7 +297,7 @@ export function HomeDashboard() {
   const totalGraphs = vaults.reduce((s, v) => s + (v.stats?.graphCount ?? 0), 0)
 
   return (
-    <div className="flex-1 relative overflow-hidden bg-cx-bg flex flex-col">
+    <div className="w-full h-full relative overflow-hidden bg-cx-bg flex flex-col">
       <GraphBg />
 
       {/* Radial glow */}
@@ -305,7 +305,7 @@ export function HomeDashboard() {
            style={{ background: 'radial-gradient(ellipse 50% 40% at 50% 30%, rgba(123,111,255,0.07) 0%, transparent 70%)' }} />
 
       <div className={cn(
-        'relative z-10 flex flex-col h-full transition-all duration-500',
+        'relative z-10 flex flex-col flex-1 min-h-0 transition-all duration-500',
         mounted ? 'opacity-100' : 'opacity-0'
       )}>
 
@@ -334,34 +334,73 @@ export function HomeDashboard() {
           )}
         </div>
 
-        {/* Scrollable content */}
+        {/* Empty state — outside scroll container so flex-1 centering works */}
+        {!creating && vaults.length === 0 && (
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
+            <div className="relative mb-7">
+              <div className="absolute inset-0 blur-3xl opacity-20 rounded-full"
+                   style={{ background: '#7b6fff', transform: 'scale(3)' }} />
+              <div className="relative w-20 h-20 rounded-2xl flex items-center justify-center"
+                   style={{
+                     background: 'linear-gradient(145deg, rgba(123,111,255,0.15), rgba(90,83,204,0.06))',
+                     border: '1px solid rgba(123,111,255,0.2)',
+                     boxShadow: '0 0 40px rgba(123,111,255,0.1), inset 0 1px 0 rgba(255,255,255,0.06)',
+                   }}>
+                <VaultIcon />
+              </div>
+            </div>
+
+            <div className="text-[22px] font-semibold text-cx-text mb-2.5 tracking-tight">
+              Your workspace is empty
+            </div>
+            <div className="text-[13px] leading-relaxed mb-8 max-w-[300px]"
+                 style={{ color: 'rgba(234,234,248,0.45)' }}>
+              Create a vault to organize your VFX node library, graphs, and pipeline knowledge.
+            </div>
+
+            <button onClick={() => setCreating(true)}
+              className="flex items-center gap-2 px-7 py-3 rounded-xl text-white text-[13px] font-semibold
+                         transition-all hover:opacity-90 active:scale-[0.98] mb-12"
+              style={{
+                background: 'linear-gradient(135deg, #7b6fff, #5a53cc)',
+                boxShadow: '0 4px 28px rgba(123,111,255,0.35)',
+              }}>
+              <span className="text-[18px] leading-none">+</span>
+              Create your first vault
+            </button>
+
+            <div className="flex items-center gap-2 flex-wrap justify-center max-w-sm">
+              {[
+                { icon: '🌀', label: 'Houdini' },
+                { icon: '🎬', label: 'Nuke' },
+                { icon: '🎨', label: 'Katana' },
+                { icon: '🔗', label: 'Graph editor' },
+                { icon: '🤖', label: 'AI copilot' },
+              ].map(f => (
+                <div key={f.label}
+                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px]"
+                     style={{
+                       background: 'rgba(255,255,255,0.03)',
+                       border: '1px solid rgba(255,255,255,0.06)',
+                       color: 'rgba(234,234,248,0.4)',
+                     }}>
+                  <span>{f.icon}</span>
+                  <span>{f.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Scrollable content — only when creating or have vaults */}
+        {(creating || vaults.length > 0) && (
         <div className="flex-1 overflow-y-auto px-8 pb-8">
-          <div className="max-w-4xl mx-auto space-y-8">
+          <div className="max-w-4xl mx-auto space-y-8 pt-2">
 
             {/* Create vault form */}
             {creating && (
-              <div className="max-w-md">
+              <div className="max-w-md pt-4">
                 <NewVaultForm onCancel={() => setCreating(false)} onCreate={handleVaultCreated} />
-              </div>
-            )}
-
-            {/* No vaults empty state */}
-            {!creating && vaults.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5"
-                     style={{ background: 'rgba(123,111,255,0.1)', border: '1px solid rgba(123,111,255,0.2)' }}>
-                  <VaultIcon />
-                </div>
-                <div className="text-[16px] font-semibold text-cx-text mb-2">No vaults yet</div>
-                <div className="text-[12px] text-cx-text-muted max-w-xs leading-relaxed mb-6">
-                  A vault stores your node library, graphs, and knowledge for a project or software pipeline.
-                </div>
-                <button onClick={() => setCreating(true)}
-                  className="px-6 py-3 rounded-xl text-white text-[13px] font-semibold
-                             transition-all hover:opacity-90 active:scale-[0.98]"
-                  style={{ background: 'linear-gradient(135deg, #7b6fff, #5a53cc)' }}>
-                  Create your first vault
-                </button>
               </div>
             )}
 
@@ -433,6 +472,7 @@ export function HomeDashboard() {
 
           </div>
         </div>
+        )}
       </div>
     </div>
   )

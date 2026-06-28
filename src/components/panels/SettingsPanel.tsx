@@ -111,7 +111,7 @@ const nodeCount = getAllNodes().length
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[680px] max-h-[80vh] bg-cx-surface border border-cx-border rounded-2xl shadow-2xl flex overflow-hidden">
+      <div className="w-[680px] max-h-[80vh] bg-cx-surface border border-cx-border rounded-2xl shadow-2xl flex overflow-hidden animate-modal-in">
 
         {/* Sidebar */}
         <div className="w-44 flex-shrink-0 border-r border-cx-border bg-cx-bg flex flex-col py-3">
