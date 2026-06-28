@@ -65,6 +65,7 @@ enum InMsg {
     NodeCatalogue {
         nodes: Vec<BridgeNode>,
         #[serde(default)]
+        #[allow(dead_code)]
         total: usize,
     },
     Ping,

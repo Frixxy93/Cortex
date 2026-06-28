@@ -1,17 +1,63 @@
-"""CORTEX Bridge — Houdini
-Run inside Houdini's Python Shell:
-  exec(open(r"C:/Users/.../Documents/cortex-bridge/cortex_bridge_houdini.py").read())
 """
-import json, socket, threading, struct, base64, os, time, atexit
+CORTEX Bridge — Houdini
+========================
+Run this inside Houdini's Python Shell:
 
-HOST, PORT = "127.0.0.1", 7878
+  exec(open(r"C:/Users/.../Documents/cortex-bridge/cortex_bridge_houdini.py").read())
+
+What it does:
+  1. Exports all node types to ~/Documents/cortex-bridge/houdini_nodes.json
+  2. Sends them to CORTEX via WebSocket (ws://127.0.0.1:7878)
+  3. CORTEX automatically saves them to the database
+
+No output file? CORTEX is not running — start it first.
+"""
+
+import json, os, socket, threading, struct, base64, time, atexit
+
+HOST, PORT   = "127.0.0.1", 7878
+EXPORT_FILE  = os.path.join(os.path.expanduser("~"), "Documents", "cortex-bridge", "houdini_nodes.json")
+
 _sock, _running = None, False
 
-CAT = {
+CAT_MAP = {
     "Sop":"sop","Vop":"vop","Dop":"dop","Chop":"chop",
     "Lop":"lop","Top":"top","Cop2":"cop","Driver":"rop",
     "Object":"object","Shop":"shop",
 }
+
+# ── Build catalogue (no parmTemplateGroup — fast) ─────────────────────────────
+
+def _build():
+    import hou
+    nodes = []
+    for cat_name, ctx in hou.nodeTypeCategories().items():
+        mapped = CAT_MAP.get(cat_name, cat_name.lower())
+        for _, nt in ctx.nodeTypes().items():
+            try:
+                if nt.hidden(): continue
+                nc   = nt.nameComponents()
+                name = (nc[1] if nc and len(nc) > 1 else None) or nt.name()
+                desc = nt.description() or name
+                nodes.append({
+                    "name":        name,
+                    "displayName": desc,
+                    "category":    mapped,
+                    "description": f"{desc} ({mapped.upper()})",
+                    "maxInputs":   min(int(nt.maxInputs()  or 0), 8),
+                    "maxOutputs":  min(int(nt.maxOutputs() or 1), 4),
+                })
+            except:
+                pass
+    return nodes
+
+# ── Save to JSON file ─────────────────────────────────────────────────────────
+
+def _save_json(nodes):
+    os.makedirs(os.path.dirname(EXPORT_FILE), exist_ok=True)
+    with open(EXPORT_FILE, "w", encoding="utf-8") as f:
+        json.dump(nodes, f, indent=2)
+    print(f"[CORTEX] Saved {len(nodes)} nodes → {EXPORT_FILE}")
 
 # ── WebSocket helpers ─────────────────────────────────────────────────────────
 
@@ -26,7 +72,7 @@ def _hs(sock):
     while b"\r\n\r\n" not in r:
         r += sock.recv(4096)
     if b"101" not in r:
-        raise ConnectionError("WS upgrade failed")
+        raise ConnectionError("WebSocket upgrade failed")
 
 def _send(sock, obj):
     d = json.dumps(obj).encode()
@@ -52,37 +98,11 @@ def _recv(sock):
     mk = rx(4) if h[1] & 0x80 else b""
     p  = rx(pl)
     if mk: p = bytes(a ^ b for a, b in zip(p, (mk * ((pl >> 2) + 1))[:pl]))
-    if op == 0x8: raise ConnectionError("close")
+    if op == 0x8: raise ConnectionError("server closed")
     if op == 0x9: _send(sock, {"type": "PONG"}); return None
     return p.decode("utf-8", "replace") if op in (0x1, 0x2) else None
 
-# ── Node catalogue (no parmTemplateGroup — fast) ──────────────────────────────
-
-def _catalogue():
-    nodes = []
-    try:
-        import hou
-        for cat, ctx in hou.nodeTypeCategories().items():
-            mapped = CAT.get(cat, cat.lower())
-            for _, nt in ctx.nodeTypes().items():
-                try:
-                    if nt.hidden(): continue
-                    nc   = nt.nameComponents()
-                    name = (nc[1] if nc and len(nc) > 1 else None) or nt.name()
-                    desc = nt.description() or name
-                    nodes.append({
-                        "name":        name,
-                        "displayName": desc,
-                        "category":    mapped,
-                        "description": f"{desc} ({mapped.upper()})",
-                        "maxInputs":   min(int(nt.maxInputs()  or 0), 8),
-                        "maxOutputs":  min(int(nt.maxOutputs() or 1), 4),
-                    })
-                except: pass
-    except: pass
-    return nodes
-
-# ── Main loop ─────────────────────────────────────────────────────────────────
+# ── Main loop (keeps connection alive for re-export) ──────────────────────────
 
 def _loop():
     global _sock, _running
@@ -91,22 +111,39 @@ def _loop():
             _sock = socket.create_connection((HOST, PORT), timeout=5)
             _sock.settimeout(None)
             _hs(_sock)
+
             import hou
             _send(_sock, {
-                "type": "HELLO", "software": "Houdini",
-                "version": hou.applicationVersionString(),
+                "type":     "HELLO",
+                "software": "Houdini",
+                "version":  hou.applicationVersionString(),
                 "clientId": f"hou-{os.getpid()}",
             })
+
             while _running:
                 msg = _recv(_sock)
                 if msg is None: continue
                 t = json.loads(msg).get("type", "")
+
                 if t == "REQUEST_NODES":
-                    ns = _catalogue()
-                    _send(_sock, {"type": "NODE_CATALOGUE", "nodes": ns, "total": len(ns)})
+                    print("[CORTEX] Building node catalogue…")
+                    nodes = _build()
+                    _save_json(nodes)                          # → houdini_nodes.json
+                    _send(_sock, {                             # → WebSocket → DB
+                        "type":  "NODE_CATALOGUE",
+                        "nodes": nodes,
+                        "total": len(nodes),
+                    })
+                    print(f"[CORTEX] Sent {len(nodes)} nodes to CORTEX — check the library!")
+
                 elif t == "PING":
                     _send(_sock, {"type": "PONG"})
-        except: pass
+
+        except ConnectionRefusedError:
+            print("[CORTEX] CORTEX not running — start CORTEX first, then re-run this script.")
+            break
+        except Exception as e:
+            print(f"[CORTEX] Disconnected ({e}) — reconnecting in 10s…")
         finally:
             if _sock:
                 try: _sock.close()
@@ -118,7 +155,7 @@ def start():
     global _running
     if _running: return
     _running = True
-    threading.Thread(target=_loop, daemon=True, name="cortex").start()
+    threading.Thread(target=_loop, daemon=True, name="cortex-bridge").start()
 
 def stop():
     global _running
