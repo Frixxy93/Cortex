@@ -477,4 +477,13 @@ function SegmentedControl({ options, value, onChange }: {
         <button key={o.value} onClick={() => onChange(o.value)}
           className={cn(
             'flex-1 py-1 rounded-md text-[11px] font-medium transition-all',
-            
+            o.value === value
+              ? 'bg-cx-surface text-cx-text'
+              : 'text-cx-text-muted hover:text-cx-text'
+          )}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}

@@ -48,3 +48,6 @@ cortex.key
 cortex.key.pub
 cortex.key
 cortex.key.pub
+rtex.key.pub
+*.key
+*.key.pub
