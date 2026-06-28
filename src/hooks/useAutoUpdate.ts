@@ -8,9 +8,6 @@ import { relaunch } from '@tauri-apps/plugin-process'
  */
 export function useAutoUpdate() {
   useEffect(() => {
-    // Only run in production builds
-    if (import.meta.env.DEV) return
-
     async function silentUpdate() {
       try {
         const update = await check()

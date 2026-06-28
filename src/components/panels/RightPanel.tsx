@@ -14,7 +14,6 @@ type TabId = 'overview' | 'parameters' | 'inputs' | 'outputs' | 'notes'
 export function RightPanel() {
   const [activeTab, setActiveTab] = useState<TabId>('overview')
   const selectedNode = useNodeStore(s => s.selectedNode())
-  const { isAdmin } = useAdminStore()
 
   const tabs: { id: TabId; label: string; count?: number }[] = [
     { id: 'overview',   label: 'Overview' },

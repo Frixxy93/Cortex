@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useAdminStore } from '@/stores/admin.store'
+import { useAutoUpdate } from '@/hooks/useAutoUpdate'
 import { LeftSidebar } from '@/components/panels/LeftSidebar'
 import { ContentPanel } from '@/components/panels/ContentPanel'
 import { RightPanel } from '@/components/panels/RightPanel'
@@ -23,6 +24,7 @@ const queryClient = new QueryClient({
 })
 
 function CortexApp() {
+  useAutoUpdate()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [bridgeOpen,   setBridgeOpen]   = useState(false)
   const { isAdmin, unlock, lock } = useAdminStore()
