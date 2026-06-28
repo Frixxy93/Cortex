@@ -1,8 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useBridgeStore } from '@/stores/bridge.store'
 import { useUiStore } from '@/stores/ui.store'
-import { useAdminStore } from '@/stores/admin.store'
-import { cn } from '@/utils/cn'
+import { BridgeService } from '@/services/bridge.service'
 
 const SW_COLORS: Record<string, string> = {
   houdini:        '#FF6B35',
@@ -26,43 +25,47 @@ const SW_ICONS: Record<string, React.ReactNode> = {
 
 interface Props { onClose: () => void }
 
+const DCC_CONSOLE: Record<string, string> = {
+  houdini: 'Windows → Python Shell',
+  blender: 'Scripting workspace → Run Script',
+  maya:    'Script Editor (Python tab)',
+  nuke:    'Script Editor → Python',
+}
+
 export function BridgePanel({ onClose }: Props) {
   const {
     serverRunning, serverPort, detected, clients,
-    importedCount, lastImportedAt, isDetecting, isImporting,
-    installingId, error,
-    detectSoftware, refreshClients, importNodes,
-    installAuto, uninstallAuto, initAutoListener,
+    importedCount, lastImportedAt, isDetecting, isImporting, error,
+    detectSoftware, refreshClients, importNodes, startServer,
   } = useBridgeStore()
   const { addToast } = useUiStore()
-  const { isAdmin } = useAdminStore()
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollRef  = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [copying, setCopying] = useState<string | null>(null)
 
-  // On mount: detect software, start auto-listener, poll clients
   useEffect(() => {
+    startServer()
     detectSoftware()
-    const unlisten = initAutoListener()
     pollRef.current = setInterval(refreshClients, 3000)
-    return () => {
-      unlisten()
-      if (pollRef.current) clearInterval(pollRef.current)
-    }
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [])
 
-  const handleInstall = async (id: string, name: string) => {
-    await installAuto(id)
-    addToast(`Auto-bridge installed for ${name} — restart ${name} to connect`, { variant: 'success' })
-  }
-
-  const handleUninstall = async (id: string, name: string) => {
-    await uninstallAuto(id)
-    addToast(`Auto-bridge removed from ${name}`, { variant: 'default' })
+  const handleCopyScript = async (id: string, name: string) => {
+    setCopying(id)
+    try {
+      const script = await BridgeService.getScript(id)
+      await navigator.clipboard.writeText(script)
+      addToast(`Script copied — paste & run in ${name}'s Python console`, { variant: 'success' })
+    } catch {
+      addToast('Could not copy script', { variant: 'error' })
+    } finally {
+      setTimeout(() => setCopying(null), 2000)
+    }
   }
 
   const handleManualImport = async () => {
     const count = await importNodes()
     if (count > 0) addToast(`Imported ${count} nodes`, { variant: 'success' })
-    else addToast('No nodes buffered yet', { variant: 'default' })
+    else addToast('No nodes buffered — run the script in your DCC first', { variant: 'default' })
   }
 
   return (
@@ -166,10 +169,10 @@ export function BridgePanel({ onClose }: Props) {
             </div>
           ) : (
             detected.map(sw => {
-              const color   = SW_COLORS[sw.kind.toLowerCase()] ?? '#7b6fff'
-              const client  = clients.find(c => c.software.toLowerCase().includes(sw.kind.toLowerCase()))
-              const loading = installingId === sw.id
+              const color     = SW_COLORS[sw.kind.toLowerCase()] ?? '#7b6fff'
+              const client    = clients.find(c => c.software.toLowerCase().includes(sw.kind.toLowerCase()))
               const supported = ['houdini','blender','maya','nuke'].includes(sw.kind.toLowerCase())
+              const consoleTip = DCC_CONSOLE[sw.kind.toLowerCase()] ?? 'Python console'
 
               return (
                 <div key={sw.id}
@@ -212,37 +215,25 @@ export function BridgePanel({ onClose }: Props) {
                     <div className="text-[10px] mt-0.5" style={{ color: 'rgba(100,100,150,0.7)' }}>
                       {client
                         ? `Connected · ${client.software} ${client.version}`
-                        : sw.isInstalled
-                          ? 'Auto-bridge installed — open software to connect'
-                          : supported
-                            ? 'Not installed — click Install to enable auto-bridge'
-                            : `v${sw.version}`
+                        : supported
+                          ? `Copy script → paste in ${consoleTip}`
+                          : `v${sw.version}`
                       }
                     </div>
                   </div>
 
                   {/* Action */}
-                  {isAdmin && supported && (
+                  {supported ? (
                     <button
-                      disabled={loading}
-                      onClick={() => sw.isInstalled
-                        ? handleUninstall(sw.id, sw.displayName)
-                        : handleInstall(sw.id, sw.displayName)
-                      }
+                      disabled={copying === sw.id}
+                      onClick={() => handleCopyScript(sw.id, sw.displayName)}
                       className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
-                      style={sw.isInstalled
-                        ? { background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.25)', color: '#f87171' }
-                        : { background: `${color}18`, border: `1px solid ${color}35`, color }
-                      }
+                      style={{ background: `${color}18`, border: `1px solid ${color}35`, color }}
                     >
-                      {loading
-                        ? <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                        : sw.isInstalled ? <UninstallIcon /> : <InstallIcon />
-                      }
-                      {loading ? '…' : sw.isInstalled ? 'Remove' : 'Install'}
+                      {copying === sw.id ? <CheckCopyIcon /> : <CopyScriptIcon />}
+                      {copying === sw.id ? 'Copied!' : 'Copy Script'}
                     </button>
-                  )}
-                  {!supported && (
+                  ) : (
                     <span className="text-[9px] px-2 py-1 rounded-lg flex-shrink-0"
                           style={{ background: 'rgba(14,14,34,0.8)', color: 'rgba(60,60,100,0.6)', border: '1px solid rgba(24,24,58,0.5)' }}>
                       coming soon
@@ -272,7 +263,7 @@ export function BridgePanel({ onClose }: Props) {
             {isImporting ? 'Importing…' : 'Force import'}
           </button>
           <div className="ml-auto text-[10px]" style={{ color: 'rgba(60,60,100,0.7)' }}>
-            Port 7878 · auto-drain on
+            Port 7878 · copy script · paste in DCC
           </div>
         </div>
       </div>
@@ -299,14 +290,15 @@ function CloseIcon() {
     <line x1="3" y1="3" x2="10" y2="10"/><line x1="10" y1="3" x2="3" y2="10"/>
   </svg>
 }
-function InstallIcon() {
+function CopyScriptIcon() {
   return <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5.5 1v6"/><path d="M3 5l2.5 2.5L8 5"/><line x1="1.5" y1="9.5" x2="9.5" y2="9.5"/>
+    <rect x="3.5" y="3.5" width="6" height="6" rx="1"/>
+    <path d="M3.5 7.5H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h4.5a1 1 0 0 1 1 1v1.5"/>
   </svg>
 }
-function UninstallIcon() {
-  return <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-    <line x1="2" y1="2" x2="9" y2="9"/><line x1="9" y1="2" x2="2" y2="9"/>
+function CheckCopyIcon() {
+  return <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1.5 5.5l3 3 5-5"/>
   </svg>
 }
 function ScanIcon() {

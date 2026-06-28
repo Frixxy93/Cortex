@@ -623,3 +623,47 @@ function SearchHint() {
     </svg>
   )
 }
+
+function PlusIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor"
+         strokeWidth="1.8" strokeLinecap="round">
+      <line x1="5.5" y1="1" x2="5.5" y2="10"/>
+      <line x1="1" y1="5.5" x2="10" y2="5.5"/>
+    </svg>
+  )
+}
+
+function StarIcon({ filled }: { filled?: boolean }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill={filled ? 'currentColor' : 'none'}
+         stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 1l1.3 2.6L10 4l-2 2 .5 2.8L6 7.4 3.5 8.8 4 6 2 4l2.7-.4Z"/>
+    </svg>
+  )
+}
+
+function CopyIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor"
+         strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="4" width="7" height="7" rx="1.2"/>
+      <path d="M4 8H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v2"/>
+    </svg>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor"
+         strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 6l3 3 5-5"/>
+    </svg>
+  )
+}
+
+function Divider() {
+  return (
+    <div style={{ height: '1px', background: 'rgba(24,24,58,0.7)', margin: '2px 0' }} />
+  )
+}

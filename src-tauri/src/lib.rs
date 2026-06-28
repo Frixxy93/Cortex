@@ -1,4 +1,4 @@
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 mod error;
 mod domain;
@@ -153,6 +153,7 @@ pub fn run() {
             commands::bridge::bridge_stop,
             commands::bridge::bridge_connected_clients,
             commands::bridge::bridge_drain_nodes,
+            commands::bridge::bridge_get_script,
             commands::bridge::bridge_install_auto,
             commands::bridge::bridge_uninstall_auto,
             commands::bridge::bridge_is_installed,

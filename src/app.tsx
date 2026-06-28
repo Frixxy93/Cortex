@@ -8,6 +8,7 @@ import { RightPanel } from '@/components/panels/RightPanel'
 import { TitleBar } from '@/components/panels/TitleBar'
 import { CommandPalette } from '@/components/panels/CommandPalette'
 import { GraphCanvas } from '@/components/canvas/GraphCanvas'
+import { useBridgeStore } from '@/stores/bridge.store'
 import { useVaultStore } from '@/stores/vault.store'
 import { useNodeStore } from '@/stores/node.store'
 import { useGraphStore } from '@/stores/graph.store'
@@ -28,6 +29,7 @@ function CortexApp() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [bridgeOpen,   setBridgeOpen]   = useState(false)
   const { isAdmin, unlock, lock } = useAdminStore()
+  const { initAutoListener } = useBridgeStore()
   const { loadVaults, activeVaultId } = useVaultStore()
   const { loadNodes } = useNodeStore()
   const { loadGraphs, setActiveGraph, saveGraph, undo, redo, activeGraph, addNode, activeGraphId } = useGraphStore()
@@ -44,6 +46,12 @@ function CortexApp() {
     window.addEventListener('keydown', handleAdminKey)
     return () => window.removeEventListener('keydown', handleAdminKey)
   }, [handleAdminKey])
+
+  // Always-on bridge listener — must live here, not inside BridgePanel
+  useEffect(() => {
+    const unlisten = initAutoListener()
+    return unlisten
+  }, [])
 
   // Load vaults + global node library on startup
   useEffect(() => {

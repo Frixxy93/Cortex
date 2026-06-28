@@ -229,7 +229,7 @@ impl BridgeEngine {
         let (tx, _rx) = tokio::sync::broadcast::channel::<()>(1);
         *self.shutdown_tx.lock().unwrap() = Some(tx.clone());
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
             // Use SO_REUSEADDR so fast restarts don't hit "address already in use"
@@ -565,13 +565,14 @@ fn auto_bridge_paths(sw: &DetectedSoftware) -> Option<(PathBuf, Option<PathBuf>)
             Some((plugin, Some(init)))
         }
         SoftwareKind::Maya => {
-            let ver = sw.version.clone();
+            // Use the global Maya scripts dir — always exists if Maya is installed.
+            // The version-specific dir may not exist until Maya is first launched.
             #[cfg(target_os = "windows")]
-            let scripts = home.join("Documents").join("maya").join(&ver).join("scripts");
+            let global = home.join("Documents").join("maya").join("scripts");
             #[cfg(not(target_os = "windows"))]
-            let scripts = home.join("maya").join(&ver).join("scripts");
-            let plugin = home.join("Documents").join("maya").join("scripts").join("cortex_bridge_maya.py");
-            let init   = scripts.join("userSetup.py");
+            let global = home.join("maya").join("scripts");
+            let plugin = global.join("cortex_bridge_maya.py");
+            let init   = global.join("userSetup.py");
             Some((plugin, Some(init)))
         }
         _ => None,
@@ -628,9 +629,10 @@ pub fn install_auto_bridge(sw: &DetectedSoftware) -> CortexResult<()> {
         if !existing.contains(CORTEX_MARKER_START) {
             let exec_line = init_exec_line(&plugin_path);
             let new_content = format!("{existing}\n{exec_line}");
-            std::fs::write(&init, new_content)
-                .map_err(|e| CortexError::Io(format!("Write init failed: {e}")))?;
-            tracing::info!("Bridge: appended exec to {}", init.display());
+            match std::fs::write(&init, new_content) {
+                Ok(_)  => tracing::info!("Bridge: appended exec to {}", init.display()),
+                Err(e) => tracing::warn!("Bridge: could not write init file {}: {e} — plugin installed, add exec line manually", init.display()),
+            }
         }
     }
 

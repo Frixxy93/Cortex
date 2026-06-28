@@ -3,6 +3,7 @@ use crate::AppState;
 use crate::engines::bridge::{
     DetectedSoftware, detect_all_software,
     install_auto_bridge, uninstall_auto_bridge, is_auto_bridge_installed,
+    bridge_plugin_content,
 };
 use crate::error::CortexError;
 
@@ -180,6 +181,21 @@ fn map_bridge_parms(parms: &[crate::engines::bridge::BridgeParm]) -> Vec<crate::
             sort_order:           i as i32,
         }
     }).collect()
+}
+
+// ── Script access ────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn bridge_get_script(
+    _state: State<'_, AppState>,
+    software_id: String,
+) -> Result<String, CortexError> {
+    let detected = detect_all_software();
+    let sw = detected.into_iter().find(|s| s.id == software_id)
+        .ok_or_else(|| CortexError::Io(format!("Software not found: {software_id}")))?;
+    bridge_plugin_content(&sw)
+        .map(|s| s.to_string())
+        .ok_or_else(|| CortexError::Io(format!("No bridge script available for {}", sw.display_name)))
 }
 
 // ── Auto-bridge install commands ─────────────────────────────────────────────
