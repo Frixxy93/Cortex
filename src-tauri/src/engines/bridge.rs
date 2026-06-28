@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use futures_util::{SinkExt, StreamExt};
@@ -512,4 +512,182 @@ pub fn detect_all_software() -> Vec<DetectedSoftware> {
         }
     }
     found
+}
+
+// ── Auto-bridge install / uninstall ──────────────────────────────────────────
+
+/// Marker comment we insert so we can detect + remove our block later
+const CORTEX_MARKER_START: &str = "# >>> CORTEX AUTO-BRIDGE START <<<";
+const CORTEX_MARKER_END:   &str = "# >>> CORTEX AUTO-BRIDGE END <<<";
+
+/// Where we write the bridge plugin file + which init file to append to.
+fn auto_bridge_paths(sw: &DetectedSoftware) -> Option<(PathBuf, Option<PathBuf>)> {
+    let home = dirs_home()?;
+
+    match sw.kind {
+        SoftwareKind::Houdini => {
+            // version like "20.5.550" → major.minor = "20.5"
+            let ver = {
+                let parts: Vec<&str> = sw.version.split('.').collect();
+                if parts.len() >= 2 { format!("{}.{}", parts[0], parts[1]) }
+                else { sw.version.clone() }
+            };
+            let pref = home.join("Documents").join(format!("houdini{ver}")).join("scripts");
+            let plugin = pref.join("cortex_bridge_houdini.py");
+            let init   = pref.join("pythonstartup.py");
+            Some((plugin, Some(init)))
+        }
+        SoftwareKind::Blender => {
+            // version like "4.2.0" → "4.2"
+            let ver = {
+                let parts: Vec<&str> = sw.version.split('.').collect();
+                if parts.len() >= 2 { format!("{}.{}", parts[0], parts[1]) }
+                else { sw.version.clone() }
+            };
+            #[cfg(target_os = "windows")]
+            let base = {
+                let appdata = std::env::var("APPDATA").ok()
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| home.join("AppData").join("Roaming"));
+                appdata.join("Blender Foundation").join("Blender").join(&ver).join("scripts").join("startup")
+            };
+            #[cfg(not(target_os = "windows"))]
+            let base = home.join(".config").join("blender").join(&ver).join("scripts").join("startup");
+            Some((base.join("cortex_bridge_blender.py"), None))
+        }
+        SoftwareKind::Nuke => {
+            #[cfg(target_os = "windows")]
+            let nuke_dir = home.join(".nuke");
+            #[cfg(not(target_os = "windows"))]
+            let nuke_dir = home.join(".nuke");
+            let plugin = nuke_dir.join("cortex_bridge_nuke.py");
+            let init   = nuke_dir.join("init.py");
+            Some((plugin, Some(init)))
+        }
+        SoftwareKind::Maya => {
+            let ver = sw.version.clone();
+            #[cfg(target_os = "windows")]
+            let scripts = home.join("Documents").join("maya").join(&ver).join("scripts");
+            #[cfg(not(target_os = "windows"))]
+            let scripts = home.join("maya").join(&ver).join("scripts");
+            let plugin = home.join("Documents").join("maya").join("scripts").join("cortex_bridge_maya.py");
+            let init   = scripts.join("userSetup.py");
+            Some((plugin, Some(init)))
+        }
+        _ => None,
+    }
+}
+
+/// Return the Python content for this software's bridge plugin.
+fn bridge_plugin_content(sw: &DetectedSoftware) -> Option<&'static str> {
+    match sw.kind {
+        SoftwareKind::Houdini => Some(include_str!("../../../bridge-plugins/cortex_bridge_houdini.py")),
+        SoftwareKind::Blender => Some(include_str!("../../../bridge-plugins/cortex_bridge_blender.py")),
+        SoftwareKind::Nuke    => Some(include_str!("../../../bridge-plugins/cortex_bridge_nuke.py")),
+        SoftwareKind::Maya    => Some(include_str!("../../../bridge-plugins/cortex_bridge_maya.py")),
+        _                     => None,
+    }
+}
+
+/// The one-liner appended to pythonstartup.py / init.py / userSetup.py.
+fn init_exec_line(plugin_path: &Path) -> String {
+    let path_str = plugin_path.to_string_lossy().replace('\\', "\\\\");
+    format!(
+        "{start}\nexec(open(r\"{path}\").read(), {{}})\n{end}\n",
+        start = CORTEX_MARKER_START,
+        path  = path_str,
+        end   = CORTEX_MARKER_END,
+    )
+}
+
+pub fn install_auto_bridge(sw: &DetectedSoftware) -> CortexResult<()> {
+    let content = bridge_plugin_content(sw)
+        .ok_or_else(|| CortexError::Io(format!("{} auto-bridge not supported", sw.display_name)))?;
+
+    let (plugin_path, init_path) = auto_bridge_paths(sw)
+        .ok_or_else(|| CortexError::Io("Cannot determine install path".to_string()))?;
+
+    // Ensure directory exists
+    if let Some(dir) = plugin_path.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| CortexError::Io(format!("mkdir failed: {e}")))?;
+    }
+
+    // Write plugin file
+    std::fs::write(&plugin_path, content)
+        .map_err(|e| CortexError::Io(format!("Write plugin failed: {e}")))?;
+
+    tracing::info!("Bridge: wrote plugin to {}", plugin_path.display());
+
+    // Append exec line to the init file (if needed)
+    if let Some(init) = init_path {
+        if let Some(dir) = init.parent() {
+            std::fs::create_dir_all(dir).ok();
+        }
+        let existing = std::fs::read_to_string(&init).unwrap_or_default();
+        if !existing.contains(CORTEX_MARKER_START) {
+            let exec_line = init_exec_line(&plugin_path);
+            let new_content = format!("{existing}\n{exec_line}");
+            std::fs::write(&init, new_content)
+                .map_err(|e| CortexError::Io(format!("Write init failed: {e}")))?;
+            tracing::info!("Bridge: appended exec to {}", init.display());
+        }
+    }
+
+    Ok(())
+}
+
+pub fn uninstall_auto_bridge(sw: &DetectedSoftware) -> CortexResult<()> {
+    let (plugin_path, init_path) = match auto_bridge_paths(sw) {
+        Some(p) => p,
+        None    => return Ok(()),
+    };
+
+    // Remove plugin file
+    if plugin_path.exists() {
+        std::fs::remove_file(&plugin_path).ok();
+    }
+
+    // Strip our marker block from the init file
+    if let Some(init) = init_path {
+        if init.exists() {
+            if let Ok(content) = std::fs::read_to_string(&init) {
+                if content.contains(CORTEX_MARKER_START) {
+                    let cleaned = strip_cortex_block(&content);
+                    std::fs::write(&init, cleaned).ok();
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn is_auto_bridge_installed(sw: &DetectedSoftware) -> bool {
+    auto_bridge_paths(sw)
+        .map(|(plugin, _)| plugin.exists())
+        .unwrap_or(false)
+}
+
+fn strip_cortex_block(content: &str) -> String {
+    let mut out = String::new();
+    let mut skip = false;
+    for line in content.lines() {
+        if line.trim() == CORTEX_MARKER_START { skip = true; continue; }
+        if line.trim() == CORTEX_MARKER_END   { skip = false; continue; }
+        if !skip { out.push_str(line); out.push('\n'); }
+    }
+    out
+}
+
+#[cfg(target_os = "windows")]
+fn dirs_home() -> Option<PathBuf> {
+    std::env::var("USERPROFILE").ok().map(PathBuf::from)
+        .or_else(|| std::env::var("HOMEDRIVE").ok().and_then(|d|
+            std::env::var("HOMEPATH").ok().map(|p| PathBuf::from(d + &p))
+        ))
+}
+#[cfg(not(target_os = "windows"))]
+fn dirs_home() -> Option<PathBuf> {
+    std::env::var("HOME").ok().map(PathBuf::from)
 }

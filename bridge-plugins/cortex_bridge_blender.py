@@ -1,44 +1,43 @@
 """
-CORTEX Bridge Plugin — Blender
-================================
-Scripting tab → paste and Run Script  (or add to startup scripts)
-Sends all Blender node types + live scene to CORTEX.
+CORTEX Auto-Bridge — Blender
+==============================
+Drop into: %APPDATA%\\Blender Foundation\\Blender\\{ver}\\scripts\\startup\\
+Blender auto-executes all files in scripts/startup/ on launch.
+No external dependencies — uses Python's built-in socket module.
 """
 
-import bpy
-import json
-import threading
-import time
+import bpy, json, socket, threading, struct, base64, os, time, atexit
 
-import socket, struct, base64, os
+CORTEX_HOST = "127.0.0.1"
+CORTEX_PORT = 7878
+RETRY_SECS  = 12
 
-CORTEX_URL = "ws://127.0.0.1:7878"
-CLIENT_ID  = f"blender-{int(time.time())}"
-_ws        = None
-_running   = False
-
-CATEGORY_MAP = {
-    "ShaderNodeTree":    "vop",
-    "GeometryNodeTree":  "sop",
-    "CompositorNodeTree":"cop",
-    "TextureNodeTree":   "vop",
-    "AnimNodeTree":      "chop",
-}
+_sock    = None
+_running = False
 
 
-def _hs(sock):
+# ─── Minimal WebSocket client ────────────────────────────────────────────────
+
+def _ws_handshake(sock):
     key = base64.b64encode(os.urandom(16)).decode()
-    req = f"GET / HTTP/1.1\r\nHost: 127.0.0.1:7878\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
-    sock.sendall(req.encode()); resp = b""
-    while b"\r\n\r\n" not in resp: resp += sock.recv(1024)
+    req = (f"GET / HTTP/1.1\r\nHost: {CORTEX_HOST}:{CORTEX_PORT}\r\n"
+           f"Upgrade: websocket\r\nConnection: Upgrade\r\n"
+           f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n")
+    sock.sendall(req.encode())
+    resp = b""
+    while b"\r\n\r\n" not in resp:
+        resp += sock.recv(1024)
+    if b"101" not in resp:
+        raise ConnectionError("WS upgrade failed")
 
-def _send(sock, text):
-    d = text.encode(); n = len(d); mask = os.urandom(4)
-    m = bytes(b ^ mask[i%4] for i,b in enumerate(d))
-    h = bytes([0x81, 0x80|n])+mask if n<=125 else bytes([0x81,0xFE])+struct.pack(">H",n)+mask
-    sock.sendall(h+m)
+def _ws_send(sock, text):
+    data = text.encode("utf-8"); n = len(data)
+    mask = os.urandom(4)
+    masked = bytes(b ^ mask[i%4] for i,b in enumerate(data))
+    hdr = bytes([0x81, 0x80|n]) + mask if n<=125 else bytes([0x81,0xFE])+struct.pack(">H",n)+mask
+    sock.sendall(hdr + masked)
 
-def _recv(sock):
+def _ws_recv(sock):
     def rx(n):
         b=b""
         while len(b)<n: b+=sock.recv(n-len(b))
@@ -49,112 +48,95 @@ def _recv(sock):
     mkey=rx(4) if mk else b""; pay=rx(pl)
     if mk: pay=bytes(b^mkey[i%4] for i,b in enumerate(pay))
     if op==0x8: raise ConnectionError("closed")
-    return pay.decode("utf-8",errors="replace") if op in(1,2) else None
-
-def send(sock, msg):
-    try: _send(sock, json.dumps(msg))
-    except Exception as e: print(f"[CORTEX] {e}")
+    return pay.decode("utf-8","replace") if op in(1,2) else None
 
 
-def build_catalogue():
+# ─── Blender node catalogue ──────────────────────────────────────────────────
+
+def _build_catalogue():
     nodes = []
-    seen  = set()
-    for node_cls in bpy.types.Node.__subclasses__():
-        try:
-            name = node_cls.__name__
-            if name in seen: continue
-            seen.add(name)
-
-            label = getattr(node_cls, 'bl_label', name)
-            cat   = "sop"
-            for tree_type, mapped in CATEGORY_MAP.items():
-                if tree_type.lower() in name.lower():
-                    cat = mapped; break
-
-            nodes.append({
-                "name":        name,
-                "displayName": label,
-                "category":    cat,
-                "description": f"{label} (Blender)",
-                "tags":        ["blender", cat],
-                "maxInputs":   4,
-                "maxOutputs":  1,
-                "parameters":  [],
-            })
-        except: pass
-
-    # Also walk node trees in the current blend file
-    for ng in bpy.data.node_groups:
-        for node in ng.nodes:
+    try:
+        seen = set()
+        for nt in dir(bpy.types):
+            if not nt.endswith("Node") or nt == "Node": continue
             try:
-                name = type(node).__name__
-                if name in seen: continue
-                seen.add(name)
-                cat = CATEGORY_MAP.get(ng.bl_idname, "sop")
+                cls = getattr(bpy.types, nt)
+                if not issubclass(cls, bpy.types.Node): continue
+                if nt in seen: continue
+                seen.add(nt)
+                label   = getattr(cls, "bl_label", nt) or nt
+                cat_raw = getattr(cls, "bl_category", "") or ""
+                cat     = cat_raw.lower().replace(" ", "_") or "node"
                 nodes.append({
-                    "name":        name,
-                    "displayName": node.name,
-                    "category":    cat,
-                    "description": f"{node.name} (Blender scene node)",
-                    "tags":        ["blender", cat, "scene"],
-                    "maxInputs":   len(node.inputs),
-                    "maxOutputs":  len(node.outputs),
-                    "parameters":  [],
+                    "name": nt, "displayName": label, "category": cat,
+                    "description": f"{label} ({cat})", "tags": [],
+                    "maxInputs": 4, "maxOutputs": 2, "parameters": [],
                 })
             except: pass
-
+    except: pass
     return nodes
 
 
-def build_scene():
-    scene_nodes = []
-    connections = []
-    for ng in bpy.data.node_groups:
-        cat = CATEGORY_MAP.get(ng.bl_idname, "sop")
-        for node in ng.nodes:
-            scene_nodes.append({
-                "id":         f"{ng.name}::{node.name}",
-                "name":       node.name,
-                "nodeType":   type(node).__name__,
-                "category":   cat,
-                "position":   [node.location.x, node.location.y],
-                "parameters": {},
-            })
-            for inp in node.inputs:
-                for link in inp.links:
-                    connections.append({
-                        "fromNode":   f"{ng.name}::{link.from_node.name}",
-                        "fromOutput": 0,
-                        "toNode":     f"{ng.name}::{node.name}",
-                        "toInput":    list(node.inputs).index(inp),
-                    })
-    return scene_nodes, connections
-
+# ─── Main loop (with auto-retry) ─────────────────────────────────────────────
 
 def _loop():
-    global _ws, _running
-    try:
-        _ws = socket.create_connection(("127.0.0.1", 7878), timeout=5)
-        _ws.settimeout(None); _hs(_ws)
-        send(_ws, {"type":"HELLO","software":"Blender","version":bpy.app.version_string,"clientId":CLIENT_ID})
-        while _running:
-            text = _recv(_ws)
-            if not text: continue
-            msg = json.loads(text); t = msg.get("type","")
-            if t == "WELCOME": print(f"[CORTEX] Connected {msg.get('serverVersion')}")
-            elif t == "REQUEST_NODES":
-                nodes = build_catalogue()
-                print(f"[CORTEX] Sending {len(nodes)} nodes")
-                send(_ws, {"type":"NODE_CATALOGUE","nodes":nodes,"total":len(nodes)})
-            elif t == "REQUEST_SCENE":
-                sn,sc = build_scene()
-                send(_ws, {"type":"SCENE_GRAPH","nodes":sn,"connections":sc})
-    except Exception as e: print(f"[CORTEX] {e}")
-    finally: _running = False
+    global _sock, _running
+    while _running:
+        try:
+            _sock = socket.create_connection((CORTEX_HOST, CORTEX_PORT), timeout=4)
+            _sock.settimeout(None)
+            _ws_handshake(_sock)
+            _ws_send(_sock, json.dumps({
+                "type": "HELLO", "software": "Blender",
+                "version": bpy.app.version_string,
+                "clientId": f"blender-{os.getpid()}",
+            }))
+            while _running:
+                text = _ws_recv(_sock)
+                if text is None: continue
+                msg = json.loads(text)
+                t   = msg.get("type", "")
+                if t == "REQUEST_NODES":
+                    nodes = _build_catalogue()
+                    _ws_send(_sock, json.dumps({"type":"NODE_CATALOGUE","nodes":nodes,"total":len(nodes)}))
+                elif t == "PING":
+                    _ws_send(_sock, json.dumps({"type":"PONG"}))
+        except ConnectionRefusedError:
+            pass
+        except Exception:
+            pass
+        finally:
+            if _sock:
+                try: _sock.close()
+                except: pass
+                _sock = None
+        if _running: time.sleep(RETRY_SECS)
+
 
 def start():
-    global _running; _running = True
-    threading.Thread(target=_loop, daemon=True).start()
-    print("[CORTEX] Connecting from Blender…")
+    global _running
+    if _running: return
+    _running = True
+    threading.Thread(target=_loop, daemon=True, name="cortex-bridge").start()
 
-print("CORTEX Bridge — Blender"); start()
+def stop():
+    global _running
+    _running = False
+
+atexit.register(stop)
+
+
+# ─── Blender addon boilerplate ────────────────────────────────────────────────
+
+bl_info = {
+    "name":     "CORTEX Bridge",
+    "author":   "CORTEX",
+    "version":  (1, 0, 0),
+    "blender":  (3, 0, 0),
+    "category": "System",
+}
+
+def register():   start()
+def unregister(): stop()
+
+start()

@@ -88,6 +88,19 @@ pub fn run() {
             }
 
             let state = AppState::new(pool);
+
+            // Auto-start bridge WebSocket server on launch.
+            // Nodes are buffered; frontend listens for "bridge:nodes-ready" and auto-drains.
+            {
+                let handle = app.handle().clone();
+                if let Err(e) = state.bridge_engine.start_server(move |nodes| {
+                    tracing::info!("Bridge: {} nodes buffered — emitting bridge:nodes-ready", nodes.len());
+                    let _ = handle.emit("bridge:nodes-ready", nodes.len());
+                }) {
+                    tracing::warn!("Bridge auto-start failed: {e}");
+                }
+            }
+
             app.manage(state);
 
             tracing::info!("CORTEX initialized. DB: {}", db_path.display());
@@ -140,6 +153,9 @@ pub fn run() {
             commands::bridge::bridge_stop,
             commands::bridge::bridge_connected_clients,
             commands::bridge::bridge_drain_nodes,
+            commands::bridge::bridge_install_auto,
+            commands::bridge::bridge_uninstall_auto,
+            commands::bridge::bridge_is_installed,
         ])
         .run(tauri::generate_context!())
         .expect("error while running CORTEX");

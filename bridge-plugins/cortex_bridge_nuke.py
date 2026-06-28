@@ -1,29 +1,43 @@
 """
-CORTEX Bridge Plugin — Nuke
-============================
-Nuke Script Editor → run this script.
-Exports all Nuke node types + current comp graph to CORTEX.
+CORTEX Auto-Bridge — Nuke
+==========================
+Auto-installed to: %USERPROFILE%\\.nuke\\cortex_bridge_nuke.py
+Loaded from:       %USERPROFILE%\\.nuke\\init.py  (exec line added by CORTEX)
+No external dependencies — uses Python's built-in socket module.
 """
 
-import nuke
-import json, threading, time, socket, struct, base64, os
+import json, socket, threading, struct, base64, os, time, atexit
 
-CLIENT_ID = f"nuke-{int(time.time())}"
-_ws = None; _running = False
+CORTEX_HOST = "127.0.0.1"
+CORTEX_PORT = 7878
+RETRY_SECS  = 12
 
-def _hs(sock):
-    key=base64.b64encode(os.urandom(16)).decode()
-    req=f"GET / HTTP/1.1\r\nHost: 127.0.0.1:7878\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
-    sock.sendall(req.encode()); resp=b""
-    while b"\r\n\r\n" not in resp: resp+=sock.recv(1024)
+_sock    = None
+_running = False
 
-def _send(sock,text):
-    d=text.encode(); n=len(d); mask=os.urandom(4)
-    m=bytes(b^mask[i%4] for i,b in enumerate(d))
-    h=bytes([0x81,0x80|n])+mask if n<=125 else bytes([0x81,0xFE])+struct.pack(">H",n)+mask
-    sock.sendall(h+m)
 
-def _recv(sock):
+# ─── Minimal WebSocket client ────────────────────────────────────────────────
+
+def _ws_handshake(sock):
+    key = base64.b64encode(os.urandom(16)).decode()
+    req = (f"GET / HTTP/1.1\r\nHost: {CORTEX_HOST}:{CORTEX_PORT}\r\n"
+           f"Upgrade: websocket\r\nConnection: Upgrade\r\n"
+           f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n")
+    sock.sendall(req.encode())
+    resp = b""
+    while b"\r\n\r\n" not in resp:
+        resp += sock.recv(1024)
+    if b"101" not in resp:
+        raise ConnectionError("WS upgrade failed")
+
+def _ws_send(sock, text):
+    data = text.encode("utf-8"); n = len(data)
+    mask = os.urandom(4)
+    masked = bytes(b ^ mask[i%4] for i,b in enumerate(data))
+    hdr = bytes([0x81,0x80|n])+mask if n<=125 else bytes([0x81,0xFE])+struct.pack(">H",n)+mask
+    sock.sendall(hdr + masked)
+
+def _ws_recv(sock):
     def rx(n):
         b=b""
         while len(b)<n: b+=sock.recv(n-len(b))
@@ -34,113 +48,85 @@ def _recv(sock):
     mkey=rx(4) if mk else b""; pay=rx(pl)
     if mk: pay=bytes(b^mkey[i%4] for i,b in enumerate(pay))
     if op==0x8: raise ConnectionError("closed")
-    return pay.decode("utf-8",errors="replace") if op in(1,2) else None
+    return pay.decode("utf-8","replace") if op in(1,2) else None
 
-def send(sock, msg):
-    try: _send(sock, json.dumps(msg))
-    except Exception as e: print(f"[CORTEX] {e}")
 
-NUKE_CATEGORIES = {
-    "Transform": "sop", "Color": "cop", "Filter": "cop",
-    "Merge":     "sop", "Channel": "chop", "3D": "sop",
-    "Particles": "dop", "Deep":    "cop",  "Draw": "cop",
-    "Time":      "chop","Other":   "other","Image": "cop",
-    "Viewer":    "other",
-}
+# ─── Nuke node catalogue ─────────────────────────────────────────────────────
 
-def send(ws, msg):
-    try: ws.send(json.dumps(msg))
-    except Exception as e: print(f"[CORTEX] {e}")
-
-def build_catalogue():
+def _build_catalogue():
     nodes = []
-    seen  = set()
-    for cls in nuke.allNodes.__doc__ and dir(nuke) or []:
-        pass
-    # Use nuke.createNode to enumerate (safe approach: read menu)
     try:
-        for menu_item in nuke.menu("Nodes").items():
+        import nuke
+        version = nuke.NUKE_VERSION_STRING
+        for class_name in nuke.allNodeClassNames():
             try:
-                label = menu_item.name()
-                name  = label.replace(" ", "").replace("/", "_")
-                if name in seen: continue
-                seen.add(name)
-                # Guess category from menu path
-                cat = "cop"
-                for k, v in NUKE_CATEGORIES.items():
-                    if k.lower() in label.lower():
-                        cat = v; break
+                knobs = {}
+                try:
+                    n = nuke.createNode(class_name, inpanel=False)
+                    for k in n.knobs().values():
+                        try:
+                            knobs[k.name()] = {"name": k.name(), "label": k.label() or k.name(),
+                                               "ptype": "float", "default": None, "options": None}
+                        except: pass
+                    nuke.delete(n)
+                except: pass
                 nodes.append({
-                    "name": name, "displayName": label,
-                    "category": cat, "description": f"{label} (Nuke)",
-                    "tags": ["nuke", cat], "maxInputs": 4, "maxOutputs": 1,
-                    "parameters": [],
+                    "name": class_name, "displayName": class_name, "category": "comp",
+                    "description": f"{class_name} (Nuke)", "tags": ["nuke"],
+                    "maxInputs": 4, "maxOutputs": 1,
+                    "parameters": list(knobs.values())[:20],
                 })
             except: pass
     except: pass
-
-    # Also enumerate all nodes in the current comp
-    for node in nuke.allNodes(recurseGroups=True):
-        try:
-            ntype = node.Class()
-            if ntype in seen: continue
-            seen.add(ntype)
-            cat = "cop"
-            for k, v in NUKE_CATEGORIES.items():
-                if k.lower() in ntype.lower():
-                    cat = v; break
-            nodes.append({
-                "name": ntype, "displayName": ntype,
-                "category": cat, "description": f"{ntype} (Nuke)",
-                "tags": ["nuke", cat], "maxInputs": 4, "maxOutputs": 1,
-                "parameters": [],
-            })
-        except: pass
     return nodes
 
-def build_scene():
-    scene_nodes = []; connections = []
-    for node in nuke.allNodes(recurseGroups=True):
-        try:
-            scene_nodes.append({
-                "id": node.fullName(), "name": node.name(),
-                "nodeType": node.Class(), "category": "cop",
-                "position": [float(node.xpos()), float(node.ypos())],
-                "parameters": {},
-            })
-            for i in range(node.inputs()):
-                src = node.input(i)
-                if src:
-                    connections.append({
-                        "fromNode": src.fullName(), "fromOutput": 0,
-                        "toNode": node.fullName(), "toInput": i,
-                    })
-        except: pass
-    return scene_nodes, connections
+
+# ─── Main loop (with auto-retry) ─────────────────────────────────────────────
 
 def _loop():
-    global _ws, _running
-    try:
-        _ws = socket.create_connection(("127.0.0.1", 7878), timeout=5)
-        _ws.settimeout(None); _hs(_ws)
-        send(_ws, {"type":"HELLO","software":"Nuke",
-                   "version":nuke.env.get("NukeVersionString","unknown"),"clientId":CLIENT_ID})
-        while _running:
-            text = _recv(_ws)
-            if not text: continue
-            msg=json.loads(text); t=msg.get("type","")
-            if t=="WELCOME": print(f"[CORTEX] Connected {msg.get('serverVersion')}")
-            elif t=="REQUEST_NODES":
-                nodes=build_catalogue(); print(f"[CORTEX] Sending {len(nodes)} node types")
-                send(_ws,{"type":"NODE_CATALOGUE","nodes":nodes,"total":len(nodes)})
-            elif t=="REQUEST_SCENE":
-                sn,sc=build_scene(); send(_ws,{"type":"SCENE_GRAPH","nodes":sn,"connections":sc})
-    except Exception as e: print(f"[CORTEX] {e}")
-    finally: _running=False
+    global _sock, _running
+    while _running:
+        try:
+            import nuke
+            _sock = socket.create_connection((CORTEX_HOST, CORTEX_PORT), timeout=4)
+            _sock.settimeout(None)
+            _ws_handshake(_sock)
+            _ws_send(_sock, json.dumps({
+                "type": "HELLO", "software": "Nuke",
+                "version": nuke.NUKE_VERSION_STRING,
+                "clientId": f"nuke-{os.getpid()}",
+            }))
+            while _running:
+                text = _ws_recv(_sock)
+                if text is None: continue
+                msg = json.loads(text)
+                t   = msg.get("type", "")
+                if t == "REQUEST_NODES":
+                    nodes = _build_catalogue()
+                    _ws_send(_sock, json.dumps({"type":"NODE_CATALOGUE","nodes":nodes,"total":len(nodes)}))
+                elif t == "PING":
+                    _ws_send(_sock, json.dumps({"type":"PONG"}))
+        except ConnectionRefusedError:
+            pass
+        except Exception:
+            pass
+        finally:
+            if _sock:
+                try: _sock.close()
+                except: pass
+                _sock = None
+        if _running: time.sleep(RETRY_SECS)
+
 
 def start():
-    global _running; _running=True
-    threading.Thread(target=_loop,daemon=True).start()
-    print("[CORTEX] Connecting from Nuke…")
+    global _running
+    if _running: return
+    _running = True
+    threading.Thread(target=_loop, daemon=True, name="cortex-bridge").start()
 
-print("CORTEX Bridge — Nuke"); start()
+def stop():
+    global _running
+    _running = False
+
+atexit.register(stop)
+start()

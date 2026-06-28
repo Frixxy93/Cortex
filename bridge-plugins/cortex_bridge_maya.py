@@ -1,30 +1,43 @@
 """
-CORTEX Bridge Plugin — Maya
-============================
-Maya Script Editor (Python tab) → run this script.
-Exports all Maya node types + Hypergraph scene to CORTEX.
+CORTEX Auto-Bridge — Maya
+==========================
+Auto-installed to: %USERPROFILE%\\Documents\\maya\\scripts\\cortex_bridge_maya.py
+Loaded from:       userSetup.py  (import line added by CORTEX)
+No external dependencies — uses Python's built-in socket module.
 """
 
-import maya.cmds as cmds
-import maya.mel as mel
-import json, threading, time, socket, struct, base64, os
+import json, socket, threading, struct, base64, os, time, atexit
 
-CLIENT_ID = f"maya-{int(time.time())}"
-_ws = None; _running = False
+CORTEX_HOST = "127.0.0.1"
+CORTEX_PORT = 7878
+RETRY_SECS  = 12
 
-def _hs(sock):
-    key=base64.b64encode(os.urandom(16)).decode()
-    req=f"GET / HTTP/1.1\r\nHost: 127.0.0.1:7878\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
-    sock.sendall(req.encode()); resp=b""
-    while b"\r\n\r\n" not in resp: resp+=sock.recv(1024)
+_sock    = None
+_running = False
 
-def _send(sock,text):
-    d=text.encode(); n=len(d); mask=os.urandom(4)
-    m=bytes(b^mask[i%4] for i,b in enumerate(d))
-    h=bytes([0x81,0x80|n])+mask if n<=125 else bytes([0x81,0xFE])+struct.pack(">H",n)+mask
-    sock.sendall(h+m)
 
-def _recv(sock):
+# ─── Minimal WebSocket client ────────────────────────────────────────────────
+
+def _ws_handshake(sock):
+    key = base64.b64encode(os.urandom(16)).decode()
+    req = (f"GET / HTTP/1.1\r\nHost: {CORTEX_HOST}:{CORTEX_PORT}\r\n"
+           f"Upgrade: websocket\r\nConnection: Upgrade\r\n"
+           f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n")
+    sock.sendall(req.encode())
+    resp = b""
+    while b"\r\n\r\n" not in resp:
+        resp += sock.recv(1024)
+    if b"101" not in resp:
+        raise ConnectionError("WS upgrade failed")
+
+def _ws_send(sock, text):
+    data = text.encode("utf-8"); n = len(data)
+    mask = os.urandom(4)
+    masked = bytes(b ^ mask[i%4] for i,b in enumerate(data))
+    hdr = bytes([0x81,0x80|n])+mask if n<=125 else bytes([0x81,0xFE])+struct.pack(">H",n)+mask
+    sock.sendall(hdr + masked)
+
+def _ws_recv(sock):
     def rx(n):
         b=b""
         while len(b)<n: b+=sock.recv(n-len(b))
@@ -35,101 +48,84 @@ def _recv(sock):
     mkey=rx(4) if mk else b""; pay=rx(pl)
     if mk: pay=bytes(b^mkey[i%4] for i,b in enumerate(pay))
     if op==0x8: raise ConnectionError("closed")
-    return pay.decode("utf-8",errors="replace") if op in(1,2) else None
+    return pay.decode("utf-8","replace") if op in(1,2) else None
 
-def send(sock, msg):
-    try: _send(sock, json.dumps(msg))
-    except Exception as e: print(f"[CORTEX] {e}")
 
-CAT_MAP = {
-    "shader":   "vop", "texture": "vop", "light": "object",
-    "transform":"object", "shape": "sop", "deformer": "sop",
-    "utility":  "sop", "render": "rop", "general": "other",
-}
+# ─── Maya node catalogue ─────────────────────────────────────────────────────
 
-def send(ws, msg):
-    try: ws.send(json.dumps(msg))
-    except Exception as e: print(f"[CORTEX] {e}")
-
-def get_maya_version():
-    try: return cmds.about(version=True)
-    except: return "unknown"
-
-def build_catalogue():
+def _build_catalogue():
     nodes = []
-    seen  = set()
     try:
-        all_types = cmds.allNodeTypes() or []
-        for ntype in all_types:
-            if ntype in seen: continue
-            seen.add(ntype)
+        import maya.cmds as cmds
+        version = cmds.about(version=True)
+        node_types = cmds.allNodeTypes() or []
+        for nt in node_types:
             try:
-                classification = cmds.getClassification(ntype)
-                raw_cat = classification[0].split("/")[0].lower() if classification else "other"
-                cat = CAT_MAP.get(raw_cat, "sop")
-                attrs = cmds.attributeInfo(allAttributes=True, type=ntype) or []
-                parms = [{"name": a, "label": a, "ptype": "float", "default": None}
-                         for a in attrs[:20]]
+                classification = cmds.getClassification(nt)
+                cat = "node"
+                if classification:
+                    raw = classification[0].lower() if classification else ""
+                    if "shader" in raw:   cat = "shader"
+                    elif "texture" in raw: cat = "texture"
+                    elif "utility" in raw: cat = "utility"
+                    elif "light" in raw:   cat = "light"
+                    elif "geometry" in raw: cat = "geometry"
                 nodes.append({
-                    "name":        ntype,
-                    "displayName": ntype,
-                    "category":    cat,
-                    "description": f"{ntype} Maya node",
-                    "tags":        ["maya", cat, raw_cat],
-                    "maxInputs":   2,
-                    "maxOutputs":  1,
-                    "parameters":  parms,
+                    "name": nt, "displayName": nt, "category": cat,
+                    "description": f"{nt} (Maya)", "tags": ["maya"],
+                    "maxInputs": 4, "maxOutputs": 2, "parameters": [],
                 })
             except: pass
-    except Exception as e:
-        print(f"[CORTEX] Catalogue error: {e}")
+    except: pass
     return nodes
 
-def build_scene():
-    scene_nodes = []; connections = []
-    try:
-        for node in cmds.ls(dag=True) or []:
-            try:
-                ntype = cmds.nodeType(node)
-                pos   = [0.0, 0.0]
-                try:
-                    x = cmds.getAttr(f"{node}.translateX") or 0
-                    y = cmds.getAttr(f"{node}.translateY") or 0
-                    pos = [float(x), float(y)]
-                except: pass
-                scene_nodes.append({
-                    "id": node, "name": node, "nodeType": ntype,
-                    "category": "object", "position": pos, "parameters": {},
-                })
-            except: pass
-        for conn in cmds.ls(connections=True) or []:
-            pass  # connection listing handled differently in Maya
-    except Exception as e:
-        print(f"[CORTEX] Scene error: {e}")
-    return scene_nodes, connections
+
+# ─── Main loop (with auto-retry) ─────────────────────────────────────────────
 
 def _loop():
-    global _ws, _running
-    try:
-        _ws = socket.create_connection(("127.0.0.1", 7878), timeout=5)
-        _ws.settimeout(None); _hs(_ws)
-        send(_ws, {"type":"HELLO","software":"Maya","version":get_maya_version(),"clientId":CLIENT_ID})
-        while _running:
-            text = _recv(_ws)
-            if not text: continue
-            msg=json.loads(text); t=msg.get("type","")
-            if t=="WELCOME": print(f"[CORTEX] Connected {msg.get('serverVersion')}")
-            elif t=="REQUEST_NODES":
-                nodes=build_catalogue(); print(f"[CORTEX] Sending {len(nodes)} node types")
-                send(_ws,{"type":"NODE_CATALOGUE","nodes":nodes,"total":len(nodes)})
-            elif t=="REQUEST_SCENE":
-                sn,sc=build_scene(); send(_ws,{"type":"SCENE_GRAPH","nodes":sn,"connections":sc})
-    except Exception as e: print(f"[CORTEX] {e}")
-    finally: _running=False
+    global _sock, _running
+    while _running:
+        try:
+            import maya.cmds as cmds
+            _sock = socket.create_connection((CORTEX_HOST, CORTEX_PORT), timeout=4)
+            _sock.settimeout(None)
+            _ws_handshake(_sock)
+            _ws_send(_sock, json.dumps({
+                "type": "HELLO", "software": "Maya",
+                "version": cmds.about(version=True),
+                "clientId": f"maya-{os.getpid()}",
+            }))
+            while _running:
+                text = _ws_recv(_sock)
+                if text is None: continue
+                msg = json.loads(text)
+                t   = msg.get("type", "")
+                if t == "REQUEST_NODES":
+                    nodes = _build_catalogue()
+                    _ws_send(_sock, json.dumps({"type":"NODE_CATALOGUE","nodes":nodes,"total":len(nodes)}))
+                elif t == "PING":
+                    _ws_send(_sock, json.dumps({"type":"PONG"}))
+        except ConnectionRefusedError:
+            pass
+        except Exception:
+            pass
+        finally:
+            if _sock:
+                try: _sock.close()
+                except: pass
+                _sock = None
+        if _running: time.sleep(RETRY_SECS)
+
 
 def start():
-    global _running; _running=True
-    threading.Thread(target=_loop,daemon=True).start()
-    print("[CORTEX] Connecting from Maya…")
+    global _running
+    if _running: return
+    _running = True
+    threading.Thread(target=_loop, daemon=True, name="cortex-bridge").start()
 
-print("CORTEX Bridge — Maya"); start()
+def stop():
+    global _running
+    _running = False
+
+atexit.register(stop)
+start()

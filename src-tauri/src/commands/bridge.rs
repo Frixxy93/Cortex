@@ -1,6 +1,9 @@
 use tauri::State;
 use crate::AppState;
-use crate::engines::bridge::{DetectedSoftware, detect_all_software};
+use crate::engines::bridge::{
+    DetectedSoftware, detect_all_software,
+    install_auto_bridge, uninstall_auto_bridge, is_auto_bridge_installed,
+};
 use crate::error::CortexError;
 
 #[tauri::command]
@@ -177,6 +180,41 @@ fn map_bridge_parms(parms: &[crate::engines::bridge::BridgeParm]) -> Vec<crate::
             sort_order:           i as i32,
         }
     }).collect()
+}
+
+// ── Auto-bridge install commands ─────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn bridge_install_auto(
+    _state: State<'_, AppState>,
+    software_id: String,
+) -> Result<(), CortexError> {
+    let detected = detect_all_software();
+    let sw = detected.into_iter().find(|s| s.id == software_id)
+        .ok_or_else(|| CortexError::Io(format!("Software not found: {software_id}")))?;
+    install_auto_bridge(&sw)
+}
+
+#[tauri::command]
+pub async fn bridge_uninstall_auto(
+    _state: State<'_, AppState>,
+    software_id: String,
+) -> Result<(), CortexError> {
+    let detected = detect_all_software();
+    let sw = detected.into_iter().find(|s| s.id == software_id)
+        .ok_or_else(|| CortexError::Io(format!("Software not found: {software_id}")))?;
+    uninstall_auto_bridge(&sw)
+}
+
+#[tauri::command]
+pub async fn bridge_is_installed(
+    _state: State<'_, AppState>,
+    software_id: String,
+) -> Result<bool, CortexError> {
+    let detected = detect_all_software();
+    let sw = detected.into_iter().find(|s| s.id == software_id)
+        .ok_or_else(|| CortexError::Io(format!("Software not found: {software_id}")))?;
+    Ok(is_auto_bridge_installed(&sw))
 }
 
 #[derive(serde::Serialize)]
