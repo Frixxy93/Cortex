@@ -4,20 +4,21 @@
 
 /* ── Design tokens ─────────────────────────────────────── */
 :root {
-  --cx-bg:           #07070f;
-  --cx-surface:      #0c0c1a;
-  --cx-elevated:     #111127;
-  --cx-overlay:      #16162e;
-  --cx-border:       #1c1c35;
-  --cx-border-bright:#2a2a50;
-  --cx-accent:       #7b6fff;
-  --cx-accent-dim:   #5a53cc;
-  --cx-text:         #e2e2f0;
-  --cx-text-dim:     #8888b8;
-  --cx-text-muted:   #44447a;
-  --cx-success:      #34d399;
-  --cx-warning:      #fbbf24;
-  --cx-error:        #f87171;
+  --cx-bg:            #05050c;
+  --cx-surface:       #09091a;
+  --cx-elevated:      #0e0e22;
+  --cx-overlay:       #13132a;
+  --cx-border:        #18183a;
+  --cx-border-bright: #252550;
+  --cx-accent:        #7b6fff;
+  --cx-accent-dim:    #5a53cc;
+  --cx-accent-glow:   rgba(123,111,255,0.18);
+  --cx-text:          #eaeaf8;
+  --cx-text-dim:      #7a7aaa;
+  --cx-text-muted:    #383870;
+  --cx-success:       #34d399;
+  --cx-warning:       #fbbf24;
+  --cx-error:         #f87171;
 
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 13px;
@@ -38,30 +39,71 @@ html, body, #root {
 }
 
 /* ── Scrollbars ──────────────────────────────────────────── */
-::-webkit-scrollbar       { width: 3px; height: 3px; }
+::-webkit-scrollbar       { width: 2px; height: 2px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #2a2a50; border-radius: 999px; }
+::-webkit-scrollbar-thumb { background: #252550; border-radius: 999px; }
 ::-webkit-scrollbar-thumb:hover { background: #3a3a70; }
 
 /* ── Selection ───────────────────────────────────────────── */
-::selection { background: rgba(123,111,255,0.28); }
+::selection { background: rgba(123,111,255,0.25); }
 
 /* ── Focus ───────────────────────────────────────────────── */
-:focus-visible { outline: 1.5px solid rgba(123,111,255,0.7); outline-offset: 2px; border-radius: 4px; }
-button:focus-visible, [role=button]:focus-visible { outline-offset: 1px; }
+:focus-visible { outline: 1.5px solid rgba(123,111,255,0.6); outline-offset: 2px; border-radius: 4px; }
+button:focus-visible { outline-offset: 1px; }
 
-/* ── Glassmorphism utility ───────────────────────────────── */
+/* ── Utilities ───────────────────────────────────────────── */
 @layer utilities {
+  .no-drag  { -webkit-app-region: no-drag; }
+  .drag     { -webkit-app-region: drag; }
+
   .glass {
-    background: rgba(12, 12, 26, 0.75);
-    backdrop-filter: blur(16px) saturate(1.4);
-    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    background: rgba(9,9,26,0.8);
+    backdrop-filter: blur(20px) saturate(1.5);
+    -webkit-backdrop-filter: blur(20px) saturate(1.5);
   }
-  .glass-light {
-    background: rgba(17, 17, 39, 0.6);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+
+  .glass-panel {
+    background: rgba(14,14,34,0.7);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
   }
+
+  /* Accent glow on active/hover elements */
+  .glow-accent {
+    box-shadow: 0 0 0 1px rgba(123,111,255,0.3),
+                0 0 20px rgba(123,111,255,0.1),
+                inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+
+  .glow-accent-sm {
+    box-shadow: 0 0 0 1px rgba(123,111,255,0.2),
+                0 0 8px rgba(123,111,255,0.08);
+  }
+
+  /* Cinematic gradient card */
+  .card-cinematic {
+    background: linear-gradient(135deg, var(--cx-elevated) 0%, rgba(14,14,34,0.6) 100%);
+    border: 1px solid var(--cx-border);
+    box-shadow: 0 2px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+
+  /* Left accent bar for active nav */
+  .nav-active-bar {
+    position: relative;
+  }
+  .nav-active-bar::before {
+    content: '';
+    position: absolute;
+    left: -2px;
+    top: 20%;
+    height: 60%;
+    width: 2px;
+    border-radius: 999px;
+    background: var(--cx-accent);
+    box-shadow: 0 0 8px var(--cx-accent);
+  }
+
+  /* Gradient border */
   .gradient-border {
     position: relative;
   }
@@ -71,27 +113,69 @@ button:focus-visible, [role=button]:focus-visible { outline-offset: 1px; }
     inset: 0;
     border-radius: inherit;
     padding: 1px;
-    background: linear-gradient(135deg, rgba(123,111,255,0.3) 0%, rgba(123,111,255,0.05) 100%);
+    background: linear-gradient(135deg, rgba(123,111,255,0.35) 0%, rgba(123,111,255,0.04) 100%);
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
     pointer-events: none;
   }
-  .no-drag  { -webkit-app-region: no-drag; }
-  .drag     { -webkit-app-region: drag; }
+}
+
+/* ── Global animations ───────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 8px rgba(123,111,255,0.15); }
+  50%       { box-shadow: 0 0 20px rgba(123,111,255,0.3); }
+}
+@keyframes shimmer {
+  from { background-position: -200% center; }
+  to   { background-position: 200% center; }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes hexDrift {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  50%       { transform: translateY(-8px) scale(1.02); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-6px); }
+}
+
+.animate-fade-in    { animation: fadeIn 0.2s ease forwards; }
+.animate-slide-left { animation: slideInLeft 0.2s ease forwards; }
+.animate-pulse-glow { animation: pulseGlow 2s ease-in-out infinite; }
+
+/* ── Canvas grid ─────────────────────────────────────────── */
+.canvas-grid {
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(123,111,255,0.12) 1px, transparent 0);
+  background-size: 32px 32px;
 }
 
 /* ── React Flow overrides ────────────────────────────────── */
-.cortex-canvas .react-flow__renderer    { background: transparent; }
-.cortex-canvas .react-flow__pane        { cursor: default; }
+.cortex-canvas .react-flow__renderer { background: transparent; }
+.cortex-canvas .react-flow__pane     { cursor: default; }
+.cortex-canvas .react-flow__edge-path { stroke: rgba(123,111,255,0.4) !important; stroke-width: 1.5 !important; }
+.cortex-canvas .react-flow__edge.selected .react-flow__edge-path { stroke: rgba(123,111,255,0.8) !important; }
+.cortex-canvas .react-flow__connection-path { stroke: rgba(123,111,255,0.6) !important; stroke-width: 1.5 !important; }
 
 .cortex-canvas .react-flow__controls {
   background: var(--cx-elevated) !important;
   border: 1px solid var(--cx-border) !important;
-  border-radius: 10px !important;
+  border-radius: 12px !important;
   overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04) !important;
 }
 .cortex-canvas .react-flow__controls button {
   background: transparent !important;
@@ -101,29 +185,22 @@ button:focus-visible, [role=button]:focus-visible { outline-offset: 1px; }
   fill: var(--cx-text-dim) !important;
   width: 32px !important;
   height: 32px !important;
+  transition: all 0.15s !important;
 }
-.cortex-canvas .react-flow__controls button:last-child {
-  border-bottom: none !important;
-}
+.cortex-canvas .react-flow__controls button:last-child { border-bottom: none !important; }
 .cortex-canvas .react-flow__controls button:hover {
   background: var(--cx-overlay) !important;
   color: var(--cx-accent) !important;
   fill: var(--cx-accent) !important;
 }
-
 .cortex-canvas .react-flow__minimap {
   background: var(--cx-surface) !important;
   border: 1px solid var(--cx-border) !important;
   border-radius: 10px !important;
   overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
 }
-.cortex-canvas .react-flow__minimap-mask { fill: rgba(7,7,15,0.7) !important; }
-
-/* Animated canvas dot grid */
-.canvas-grid {
-  background-image: radial-gradient(circle, #1c1c35 1px, transparent 1px);
-  background-size: 28px 28px;
-}
+.cortex-canvas .react-flow__minimap-mask { fill: rgba(5,5,12,0.75) !important; }
 
 /* ── Input base ──────────────────────────────────────────── */
 .cx-input {
@@ -139,20 +216,20 @@ button:focus-visible, [role=button]:focus-visible { outline-offset: 1px; }
 }
 .cx-input::placeholder { color: var(--cx-text-muted); }
 .cx-input:focus {
-  border-color: rgba(123,111,255,0.6);
-  box-shadow: 0 0 0 3px rgba(123,111,255,0.12);
+  border-color: rgba(123,111,255,0.5);
+  box-shadow: 0 0 0 3px rgba(123,111,255,0.1);
 }
 
-/* ── Tag ─────────────────────────────────────────────────── */
+/* ── Tag pill ────────────────────────────────────────────── */
 .cx-tag {
   display: inline-flex;
   align-items: center;
-  padding: 2px 7px;
+  padding: 2px 8px;
   border-radius: 999px;
   font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.02em;
-  background: rgba(123,111,255,0.12);
-  color: rgba(123,111,255,0.9);
-  border: 1px solid rgba(123,111,255,0.2);
+  background: rgba(123,111,255,0.1);
+  color: rgba(180,175,255,0.9);
+  border: 1px solid rgba(123,111,255,0.18);
 }

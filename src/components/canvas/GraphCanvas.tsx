@@ -288,20 +288,26 @@ function CanvasTools() {
   ]
 
   return (
-    <div className="absolute left-3 top-3 z-10 flex flex-col gap-0.5
-                    bg-cx-elevated/90 backdrop-blur border border-cx-border rounded-xl p-1
-                    shadow-[0_4px_24px_rgba(0,0,0,0.5)]">
+    <div className="absolute left-3 top-3 z-10 flex flex-col gap-0.5 p-1 rounded-xl"
+         style={{
+           background: 'rgba(10,10,26,0.85)',
+           border: '1px solid rgba(24,24,58,0.8)',
+           boxShadow: '0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04)',
+           backdropFilter: 'blur(12px)',
+         }}>
       {tools.map(t => (
         <button
           key={t.id}
           title={t.title}
           onClick={() => setActiveTool(t.id)}
-          className={cn(
-            'w-7 h-7 flex items-center justify-center rounded-lg text-[11px] transition-all',
-            activeTool === t.id
-              ? 'bg-cx-accent/20 text-cx-accent'
-              : 'text-cx-text-muted hover:bg-cx-overlay hover:text-cx-text'
-          )}
+          className="w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-150"
+          style={activeTool === t.id ? {
+            background: 'rgba(123,111,255,0.18)',
+            color: 'rgba(180,175,255,0.9)',
+            boxShadow: 'inset 0 0 0 1px rgba(123,111,255,0.25)',
+          } : {
+            color: 'rgba(100,100,150,0.7)',
+          }}
         >
           {t.icon}
         </button>
@@ -328,45 +334,94 @@ function CanvasEmptyState() {
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center relative overflow-hidden">
-      <div className="absolute inset-0 canvas-grid" />
-      <div className="absolute inset-0"
-           style={{ background: 'radial-gradient(ellipse 55% 45% at 50% 50%, rgba(123,111,255,0.07) 0%, transparent 70%)' }} />
-      <div className="absolute" style={{ animation: 'hexDrift 18s ease-in-out infinite' }}>
-        <HexRing size={360} opacity={0.025} />
+    <div className="flex-1 flex items-center justify-center relative overflow-hidden"
+         style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 50%, rgba(9,9,30,1) 30%, rgba(5,5,12,1) 100%)' }}>
+      {/* Grid */}
+      <div className="absolute inset-0 canvas-grid opacity-60" />
+
+      {/* Radial glow */}
+      <div className="absolute inset-0 pointer-events-none"
+           style={{ background: 'radial-gradient(ellipse 50% 40% at 50% 52%, rgba(123,111,255,0.08) 0%, transparent 70%)' }} />
+
+      {/* Outer hex ring - slow rotation */}
+      <div className="absolute pointer-events-none"
+           style={{ animation: 'spin 80s linear infinite' }}>
+        <HexRing size={440} opacity={0.04} />
       </div>
-      <div className="absolute" style={{ animation: 'hexDrift 26s ease-in-out infinite reverse' }}>
-        <HexRing size={220} opacity={0.05} />
+      {/* Mid hex ring - counter */}
+      <div className="absolute pointer-events-none"
+           style={{ animation: 'spin 50s linear infinite reverse' }}>
+        <HexRing size={300} opacity={0.06} />
+      </div>
+      {/* Inner hex - float */}
+      <div className="absolute pointer-events-none"
+           style={{ animation: 'hexDrift 8s ease-in-out infinite' }}>
+        <HexRing size={170} opacity={0.10} />
       </div>
 
-      <div className="relative flex flex-col items-center gap-5 text-center">
-        <div style={{ animation: 'float 6s ease-in-out infinite' }}>
-          <svg viewBox="0 0 80 80" width="80" height="80" fill="none">
-            <path d="M40 6 L70 22 L70 58 L40 74 L10 58 L10 22 Z" stroke="rgba(123,111,255,0.25)" strokeWidth="1" fill="rgba(123,111,255,0.04)"/>
-            <path d="M40 19 L59 29 L59 51 L40 61 L21 51 L21 29 Z" stroke="rgba(123,111,255,0.12)" strokeWidth="1" fill="rgba(123,111,255,0.03)"/>
-            <path d="M40 32 L50 37.5 L50 48.5 L40 54 L30 48.5 L30 37.5 Z" stroke="rgba(123,111,255,0.5)" strokeWidth="1.5" fill="rgba(123,111,255,0.08)"/>
+      {/* Corner accents */}
+      <div className="absolute top-6 left-6 w-24 h-24 pointer-events-none opacity-20"
+           style={{ background: 'radial-gradient(circle, rgba(123,111,255,0.3) 0%, transparent 70%)' }} />
+      <div className="absolute bottom-6 right-6 w-24 h-24 pointer-events-none opacity-20"
+           style={{ background: 'radial-gradient(circle, rgba(123,111,255,0.3) 0%, transparent 70%)' }} />
+
+      {/* Center content */}
+      <div className="relative flex flex-col items-center gap-6 text-center animate-fade-in">
+        {/* Logo mark */}
+        <div style={{ animation: 'hexDrift 6s ease-in-out infinite', filter: 'drop-shadow(0 0 20px rgba(123,111,255,0.3))' }}>
+          <svg viewBox="0 0 88 88" width="88" height="88" fill="none">
+            {/* Outer */}
+            <path d="M44 4 L78 23 L78 65 L44 84 L10 65 L10 23 Z"
+                  stroke="rgba(123,111,255,0.15)" strokeWidth="1" fill="rgba(123,111,255,0.03)"/>
+            {/* Mid */}
+            <path d="M44 18 L66 30 L66 58 L44 70 L22 58 L22 30 Z"
+                  stroke="rgba(123,111,255,0.22)" strokeWidth="1" fill="rgba(123,111,255,0.04)"/>
+            {/* Inner glow hex */}
+            <path d="M44 32 L56 38.9 L56 52.9 L44 59.8 L32 52.9 L32 38.9 Z"
+                  stroke="rgba(123,111,255,0.6)" strokeWidth="1.5" fill="rgba(123,111,255,0.10)"
+                  style={{ filter: 'drop-shadow(0 0 8px rgba(123,111,255,0.4))' }}/>
+            {/* Center dot */}
+            <circle cx="44" cy="46" r="3" fill="rgba(123,111,255,0.8)"
+                    style={{ filter: 'drop-shadow(0 0 6px rgba(123,111,255,0.8))' }}/>
           </svg>
         </div>
-        <div className="space-y-1.5">
-          <h2 className="text-[15px] font-semibold text-cx-text">No graph open</h2>
-          <p className="text-[11px] text-cx-text-muted max-w-[200px] leading-relaxed">
-            Create a graph to start building your knowledge network
+
+        {/* Text */}
+        <div className="space-y-2">
+          <h2 className="text-[16px] font-semibold tracking-tight" style={{ color: 'rgba(226,226,240,0.9)' }}>
+            No graph open
+          </h2>
+          <p className="text-[11.5px] leading-relaxed max-w-[190px]" style={{ color: 'rgba(100,100,150,0.8)' }}>
+            Create a graph to start building your VFX node network
           </p>
         </div>
-        <div className="flex flex-col items-center gap-2">
+
+        {/* Actions */}
+        <div className="flex flex-col items-center gap-2.5">
           <button
             onClick={handleNewGraph}
             disabled={creating || !activeVaultId}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cx-accent/90 hover:bg-cx-accent
-                       text-white text-[12px] font-semibold transition-all shadow-glow-sm
-                       disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-[12px] font-semibold
+                       transition-all duration-200 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              background: 'linear-gradient(135deg, #7b6fff 0%, #6058dd 100%)',
+              boxShadow: '0 4px 16px rgba(123,111,255,0.35), 0 0 0 1px rgba(123,111,255,0.25), inset 0 1px 0 rgba(255,255,255,0.1)',
+            }}
           >
-            {creating ? '…' : '+ New Graph'}
+            <span className="text-[14px] leading-none">+</span>
+            <span>{creating ? 'Creating…' : 'New Graph'}</span>
           </button>
-          <button onClick={openCommandPalette}
-                  className="flex items-center gap-1.5 text-cx-text-muted text-[11px] hover:text-cx-text transition-colors">
-            <kbd className="px-1.5 py-0.5 rounded bg-cx-elevated border border-cx-border text-cx-text-dim text-[10px] font-mono">⌘K</kbd>
-            <span>command palette</span>
+
+          <button
+            onClick={openCommandPalette}
+            className="flex items-center gap-1.5 text-[11px] transition-all group"
+            style={{ color: 'rgba(100,100,150,0.7)' }}
+          >
+            <kbd className="px-1.5 py-0.5 rounded-md font-mono text-[10px]"
+                 style={{ background: 'rgba(14,14,34,0.8)', border: '1px solid rgba(36,36,80,0.7)', color: 'rgba(140,140,200,0.7)' }}>
+              &#8984;K
+            </kbd>
+            <span className="group-hover:opacity-100 opacity-70 transition-opacity">command palette</span>
           </button>
         </div>
       </div>
@@ -387,14 +442,24 @@ function HexRing({ size, opacity }: { size: number; opacity: number }) {
   )
 }
 
-/* Icons */
 function ExportIcon() {
-  return <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5.5 1v6M3 4.5l2.5 2.5 2.5-2.5"/>
-    <path d="M1.5 8.5v1h8v-1"/>
-  </svg>
+  return (
+    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor"
+         strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5.5 1v6M3 4.5l2.5 2.5 2.5-2.5"/>
+      <path d="M1.5 8.5v1h8v-1"/>
+    </svg>
+  )
 }
-function SelectIcon() { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M2 2 L11 6.5 L7 7.5 L5 11 Z"/></svg> }
-function PanIcon()    { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><circle cx="6.5" cy="6.5" r="2.5"/><path d="M6.5 1v2M6.5 10v2M1 6.5h2M10 6.5h2"/></svg> }
-function GridIcon()   { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><rect x="1.5" y="1.5" width="4" height="4" rx="0.5"/><rect x="7.5" y="1.5" width="4" height="4" rx="0.5"/><rect x="1.5" y="7.5" width="4" height="4" rx="0.5"/><rect x="7.5" y="7.5" width="4" height="4" rx="0.5"/></svg> }
-function FitIcon()    { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><path d="M2 5V2h3M11 5V2H8M2 8v3h3M11 8v3H8"/></svg> }
+function SelectIcon() {
+  return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M2 2 L11 6.5 L7 7.5 L5 11 Z"/></svg>
+}
+function PanIcon() {
+  return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><circle cx="6.5" cy="6.5" r="2.5"/><path d="M6.5 1v2M6.5 10v2M1 6.5h2M10 6.5h2"/></svg>
+}
+function GridIcon() {
+  return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><rect x="1.5" y="1.5" width="4" height="4" rx="0.5"/><rect x="7.5" y="1.5" width="4" height="4" rx="0.5"/><rect x="1.5" y="7.5" width="4" height="4" rx="0.5"/><rect x="7.5" y="7.5" width="4" height="4" rx="0.5"/></svg>
+}
+function FitIcon() {
+  return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><path d="M1.5 4.5V1.5H4.5"/><path d="M8.5 1.5H11.5V4.5"/><path d="M11.5 8.5V11.5H8.5"/><path d="M4.5 11.5H1.5V8.5"/></svg>
+}

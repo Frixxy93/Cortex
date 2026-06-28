@@ -26,26 +26,33 @@ export function RightPanel() {
   useEffect(() => { setActiveTab('overview') }, [selectedNode?.id])
 
   return (
-    <div className="w-64 flex-shrink-0 flex flex-col bg-cx-surface border-l border-cx-border h-full"
-         style={{ boxShadow: '-1px 0 0 rgba(255,255,255,0.02)' }}>
+    <div className="w-64 flex-shrink-0 flex flex-col h-full"
+         style={{
+           background: 'linear-gradient(180deg, rgba(9,9,26,0.98) 0%, rgba(7,7,20,0.98) 100%)',
+           borderLeft: '1px solid rgba(24,24,58,0.7)',
+           boxShadow: '-4px 0 24px rgba(0,0,0,0.2), -1px 0 0 rgba(255,255,255,0.02)',
+         }}>
       {selectedNode ? <NodeHeader node={selectedNode} /> : <EmptyHeader />}
-      <div className="flex border-b border-cx-border flex-shrink-0 overflow-x-auto"
-           style={{ scrollbarWidth: 'none' }}>
+      <div className="flex flex-shrink-0 overflow-x-auto" style={{ borderBottom: '1px solid rgba(24,24,58,0.7)', scrollbarWidth: 'none' }}>
         {tabs.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             className={cn(
-              'flex-1 min-w-fit px-2 py-2 text-[10px] font-semibold uppercase tracking-[0.08em]',
+              'flex-1 min-w-fit px-2 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em]',
               'border-b-2 transition-all duration-150 whitespace-nowrap flex items-center justify-center gap-1',
               activeTab === tab.id
-                ? 'border-cx-accent text-cx-accent bg-cx-accent/5'
+                ? 'text-cx-accent'
                 : 'border-transparent text-cx-text-muted hover:text-cx-text-dim'
-            )}>
+            )}
+            style={activeTab === tab.id ? {
+              borderBottomColor: 'var(--cx-accent)',
+              background: 'linear-gradient(180deg, rgba(123,111,255,0.05) 0%, transparent 100%)',
+            } : undefined}>
             {tab.label}
             {tab.count != null && tab.count > 0 && (
-              <span className={cn(
-                'text-[8px] px-1 py-px rounded font-bold leading-none',
-                activeTab === tab.id ? 'bg-cx-accent/20 text-cx-accent' : 'bg-cx-elevated text-cx-text-muted'
-              )}>
+              <span className="text-[8px] px-1 py-px rounded font-bold leading-none"
+                    style={activeTab === tab.id
+                      ? { background: 'rgba(123,111,255,0.2)', color: 'var(--cx-accent)' }
+                      : { background: 'rgba(14,14,34,0.8)', color: 'rgba(100,100,150,0.8)' }}>
                 {tab.count}
               </span>
             )}
@@ -100,57 +107,79 @@ function NodeHeader({ node }: { node: CortexNode }) {
   }
 
   return (
-    <div className="flex-shrink-0 border-b border-cx-border"
-         style={{ background: `linear-gradient(160deg, ${accent}12 0%, ${accent}04 60%, transparent 100%)` }}>
-      <div className="h-0.5" style={{ background: `linear-gradient(90deg, ${accent}, transparent)` }} />
-      <div className="px-3 pt-3 pb-2.5">
-        <div className="flex items-start gap-2.5 mb-2.5">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-[18px]"
-               style={{ background: `${accent}20`, border: `1.5px solid ${accent}40`, boxShadow: `0 0 14px ${accent}25` }}>
-            {icon}
+    <div className="flex-shrink-0" style={{ borderBottom: '1px solid rgba(24,24,58,0.7)' }}>
+      {/* Accent top line */}
+      <div className="h-0.5" style={{ background: `linear-gradient(90deg, ${accent}cc 0%, ${accent}40 60%, transparent 100%)` }} />
+      {/* Header bg */}
+      <div style={{ background: `linear-gradient(160deg, ${accent}10 0%, rgba(9,9,26,0.95) 70%)` }}>
+        <div className="px-3.5 pt-3 pb-3">
+          <div className="flex items-start gap-2.5 mb-2.5">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-[18px]"
+                 style={{
+                   background: `${accent}18`,
+                   border: `1.5px solid ${accent}45`,
+                   boxShadow: `0 0 16px ${accent}25, inset 0 1px 0 rgba(255,255,255,0.05)`,
+                 }}>
+              {icon}
+            </div>
+            <div className="flex-1 min-w-0 pt-0.5">
+              <div className="text-[13px] font-semibold truncate leading-tight" style={{ color: 'rgba(226,226,240,0.95)' }}>
+                {node.displayName}
+              </div>
+              <div className="text-[9.5px] mt-0.5 font-mono truncate" style={{ color: 'rgba(80,80,130,0.8)' }}>
+                {node.name}
+              </div>
+            </div>
           </div>
-          <div className="flex-1 min-w-0 pt-0.5">
-            <div className="text-[13px] font-semibold text-cx-text truncate leading-tight">{node.displayName}</div>
-            <div className="text-[10px] mt-0.5 font-mono opacity-50 truncate text-cx-text-muted">{node.name}</div>
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5 mb-2.5 flex-wrap">
-          <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-                style={{ background: `${accent}20`, color: accent, border: `1px solid ${accent}35` }}>
-            {node.category}
-          </span>
-          <span className="text-[9px] text-cx-text-muted px-1.5 py-0.5 rounded-full bg-cx-elevated border border-cx-border">
-            {node.objectType.replace(/_/g, ' ')}
-          </span>
-          {node.isDeprecated && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-cx-error/40 bg-cx-error/10 text-cx-error">
-              deprecated
+
+          {/* Badges */}
+          <div className="flex items-center gap-1.5 mb-2.5 flex-wrap">
+            <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                  style={{ background: `${accent}18`, color: accent, border: `1px solid ${accent}35` }}>
+              {node.category}
             </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={handleAddToCanvas}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg
-                       text-[10px] font-semibold text-white transition-opacity hover:opacity-90"
-            style={{ background: accent }}>
-            <PlusIcon /> Add to Canvas
-          </button>
-          <button onClick={() => toggleBookmark(node.id)} title={starred ? 'Remove bookmark' : 'Bookmark'}
-            className={cn(
-              'w-7 h-7 flex items-center justify-center rounded-lg border transition-all',
-              starred ? 'bg-amber-400/15 border-amber-400/30 text-amber-400'
-                      : 'bg-cx-elevated border-cx-border text-cx-text-muted hover:text-amber-400'
-            )}>
-            <StarIcon filled={starred} />
-          </button>
-          <button onClick={handleCopyName} title="Copy node name"
-            className={cn(
-              'w-7 h-7 flex items-center justify-center rounded-lg border transition-all',
-              copied ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
-                     : 'bg-cx-elevated border-cx-border text-cx-text-muted hover:text-cx-text'
-            )}>
-            {copied ? <CheckIcon /> : <CopyIcon />}
-          </button>
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full"
+                  style={{ background: 'rgba(14,14,34,0.8)', color: 'rgba(100,100,150,0.8)', border: '1px solid rgba(24,24,58,0.7)' }}>
+              {node.objectType.replace(/_/g, ' ')}
+            </span>
+            {node.isDeprecated && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full"
+                    style={{ background: 'rgba(248,113,113,0.1)', color: '#f87171', border: '1px solid rgba(248,113,113,0.3)' }}>
+                deprecated
+              </span>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-1">
+            <button onClick={handleAddToCanvas}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg
+                         text-[10px] font-semibold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
+              style={{
+                background: `linear-gradient(135deg, ${accent} 0%, ${accent}bb 100%)`,
+                boxShadow: `0 2px 10px ${accent}30`,
+              }}>
+              <PlusIcon /> Add to Canvas
+            </button>
+            <button onClick={() => toggleBookmark(node.id)} title={starred ? 'Remove bookmark' : 'Bookmark'}
+              className="w-7 h-7 flex items-center justify-center rounded-lg transition-all"
+              style={starred ? {
+                background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.3)', color: '#fbbf24',
+              } : {
+                background: 'rgba(14,14,34,0.8)', border: '1px solid rgba(24,24,58,0.7)', color: 'rgba(100,100,150,0.7)',
+              }}>
+              <StarIcon filled={starred} />
+            </button>
+            <button onClick={handleCopyName} title="Copy node name"
+              className="w-7 h-7 flex items-center justify-center rounded-lg transition-all"
+              style={copied ? {
+                background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.3)', color: '#34d399',
+              } : {
+                background: 'rgba(14,14,34,0.8)', border: '1px solid rgba(24,24,58,0.7)', color: 'rgba(100,100,150,0.7)',
+              }}>
+              {copied ? <CheckIcon /> : <CopyIcon />}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -159,12 +188,16 @@ function NodeHeader({ node }: { node: CortexNode }) {
 
 function EmptyHeader() {
   return (
-    <div className="px-3 py-3 flex-shrink-0 border-b border-cx-border">
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 rounded-lg bg-cx-elevated border border-cx-border flex items-center justify-center">
+    <div className="px-3.5 py-3 flex-shrink-0" style={{ borderBottom: '1px solid rgba(24,24,58,0.7)' }}>
+      <div className="flex items-center gap-2.5">
+        <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+             style={{ background: 'rgba(14,14,34,0.8)', border: '1px solid rgba(36,36,80,0.6)' }}>
           <HexOutline />
         </div>
-        <span className="text-[12px] font-semibold text-cx-text-dim">Inspector</span>
+        <div>
+          <span className="text-[12px] font-semibold" style={{ color: 'rgba(140,140,180,0.8)' }}>Inspector</span>
+          <p className="text-[9px] mt-0.5" style={{ color: 'rgba(80,80,130,0.7)' }}>Select a node to inspect</p>
+        </div>
       </div>
     </div>
   )
@@ -172,26 +205,37 @@ function EmptyHeader() {
 
 /* ── Empty State ─────────────────────────────────────────── */
 function EmptyState() {
+  const hints = [
+    { svg: <CanvasHint />,  text: 'Click any node on the canvas' },
+    { svg: <LibraryHint />, text: 'Select from the Nodes panel' },
+    { svg: <SearchHint />,  text: 'Use Search to find nodes' },
+  ]
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center">
-      <div className="w-14 h-14 rounded-2xl bg-cx-elevated border border-cx-border flex items-center justify-center opacity-25">
-        <HexOutline size={28} />
+    <div className="flex flex-col items-center justify-center h-full gap-5 px-4 text-center">
+      {/* Animated hex */}
+      <div className="relative" style={{ animation: 'hexDrift 6s ease-in-out infinite', filter: 'drop-shadow(0 0 12px rgba(123,111,255,0.2))' }}>
+        <svg viewBox="0 0 64 64" width="56" height="56" fill="none">
+          <path d="M32 4 L56 18 L56 46 L32 60 L8 46 L8 18 Z"
+                stroke="rgba(123,111,255,0.15)" strokeWidth="1" fill="none"/>
+          <path d="M32 14 L49 24 L49 44 L32 54 L15 44 L15 24 Z"
+                stroke="rgba(123,111,255,0.2)" strokeWidth="1" fill="none"/>
+          <path d="M32 24 L42 30 L42 42 L32 48 L22 42 L22 30 Z"
+                stroke="rgba(123,111,255,0.35)" strokeWidth="1.5" fill="rgba(123,111,255,0.05)"/>
+        </svg>
       </div>
       <div>
-        <p className="text-[12px] font-semibold text-cx-text-dim">No node selected</p>
-        <p className="text-[10px] text-cx-text-muted mt-1 leading-relaxed">
+        <p className="text-[12px] font-semibold" style={{ color: 'rgba(160,160,200,0.8)' }}>No node selected</p>
+        <p className="text-[10.5px] mt-1 leading-relaxed" style={{ color: 'rgba(80,80,130,0.8)' }}>
           Click a node on the canvas or in the Library to inspect it
         </p>
       </div>
       <div className="flex flex-col gap-1.5 w-full">
-        {[
-          { icon: '🖱', text: 'Click any node on the canvas' },
-          { icon: '📚', text: 'Select from the Library panel' },
-          { icon: '🔍', text: 'Use Search to find nodes' },
-        ].map(h => (
-          <div key={h.text} className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl bg-cx-elevated border border-cx-border text-left">
-            <span className="text-[13px]">{h.icon}</span>
-            <span className="text-[10px] text-cx-text-muted">{h.text}</span>
+        {hints.map(h => (
+          <div key={h.text}
+               className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-colors"
+               style={{ background: 'rgba(14,14,34,0.7)', border: '1px solid rgba(24,24,58,0.6)' }}>
+            <span style={{ color: 'rgba(123,111,255,0.5)' }}>{h.svg}</span>
+            <span className="text-[10.5px]" style={{ color: 'rgba(100,100,150,0.75)' }}>{h.text}</span>
           </div>
         ))}
       </div>
@@ -524,58 +568,58 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 function StatChip({ label, value, color }: { label: string; value: number|string; color: string }) {
   return (
-    <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-cx-elevated border border-cx-border">
-      <span className="text-[10px] text-cx-text-muted">{label}</span>
+    <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg"
+         style={{ background: 'rgba(14,14,34,0.8)', border: '1px solid rgba(24,24,58,0.6)' }}>
+      <span className="text-[10px]" style={{ color: 'rgba(100,100,150,0.8)' }}>{label}</span>
       <span className="text-[11px] font-bold" style={{ color }}>{value}</span>
     </div>
   )
 }
-function Divider() { return <div className="border-t border-cx-border/60" /> }
-function EmptyTabState({ icon, message }: { icon: string; message: string }) {
+
+function HexOutline({ size = 48, opacity = 0.18 }: { size?: number; opacity?: number }) {
+  const cx = size / 2, cy = size / 2, r = size * 0.44
+  const pts = Array.from({ length: 6 }, (_, i) => {
+    const a = (Math.PI / 3) * i - Math.PI / 6
+    return `${(cx + r * Math.cos(a)).toFixed(2)},${(cy + r * Math.sin(a)).toFixed(2)}`
+  }).join(' ')
   return (
-    <div className="flex flex-col items-center justify-center py-8 gap-2">
-      <span className="text-2xl opacity-25">{icon}</span>
-      <p className="text-[11px] text-cx-text-muted">{message}</p>
-    </div>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none">
+      <polygon points={pts} stroke={`rgba(123,111,255,${opacity})`} strokeWidth="1.2" fill="none"/>
+    </svg>
   )
 }
 
-/* ── Icons ───────────────────────────────────────────────── */
-function StarIcon({ filled }: { filled?: boolean }) {
-  return <svg width="13" height="13" viewBox="0 0 14 14" fill={filled ? '#fbbf24' : 'none'}
-    stroke={filled ? '#fbbf24' : 'currentColor'} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M7 1.5l1.5 3 3.5.5-2.5 2.5.5 3.5L7 9.5l-3 1.5.5-3.5L2 5l3.5-.5z"/>
-  </svg>
+function CanvasHint() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor"
+         strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="14" height="14" rx="2.5"/>
+      <circle cx="9" cy="9" r="2.5"/>
+      <line x1="9" y1="2" x2="9" y2="4"/>
+      <line x1="9" y1="14" x2="9" y2="16"/>
+      <line x1="2" y1="9" x2="4" y2="9"/>
+      <line x1="14" y1="9" x2="16" y2="9"/>
+    </svg>
+  )
 }
-function HexOutline({ size = 18, className }: { size?: number; className?: string }) {
-  return <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor"
-    strokeWidth="1.2" strokeLinecap="round" className={className}>
-    <path d="M10 2 L17 5.5 L17 14.5 L10 18 L3 14.5 L3 5.5 Z"/>
-  </svg>
+
+function LibraryHint() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor"
+         strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 2 L14 2 L14 16 L9 13 L4 16 Z"/>
+      <line x1="7" y1="6" x2="11" y2="6"/>
+      <line x1="7" y1="9" x2="11" y2="9"/>
+    </svg>
+  )
 }
-function PlusIcon() {
-  return <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-    <line x1="5" y1="1" x2="5" y2="9"/><line x1="1" y1="5" x2="9" y2="5"/>
-  </svg>
-}
-function CopyIcon() {
-  return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="4" y="4" width="7" height="7" rx="1.5"/><path d="M1 8V2a1 1 0 011-1h6"/>
-  </svg>
-}
-function CheckIcon() {
-  return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M2 6l3 3 5-5"/>
-  </svg>
-}
-function XIcon() {
-  return <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-    <line x1="1" y1="1" x2="7" y2="7"/><line x1="7" y1="1" x2="1" y2="7"/>
-  </svg>
-}
-function LinkIcon() {
-  return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5 6.5a2.5 2.5 0 003.5.5l2-2A2.5 2.5 0 107 1.5L6 2.5"/>
-    <path d="M7 5.5a2.5 2.5 0 00-3.5-.5l-2 2A2.5 2.5 0 005 10.5L6 9.5"/>
-  </svg>
+
+function SearchHint() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor"
+         strokeWidth="1.3" strokeLinecap="round">
+      <circle cx="8" cy="8" r="5"/>
+      <line x1="12" y1="12" x2="16" y2="16"/>
+    </svg>
+  )
 }
