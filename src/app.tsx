@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useAdminStore } from '@/stores/admin.store'
 import { LeftSidebar } from '@/components/panels/LeftSidebar'
 import { ContentPanel } from '@/components/panels/ContentPanel'
 import { RightPanel } from '@/components/panels/RightPanel'
@@ -24,10 +25,23 @@ const queryClient = new QueryClient({
 function CortexApp() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [bridgeOpen,   setBridgeOpen]   = useState(false)
+  const { isAdmin, unlock, lock } = useAdminStore()
   const { loadVaults, activeVaultId } = useVaultStore()
   const { loadNodes } = useNodeStore()
   const { loadGraphs, setActiveGraph, saveGraph, undo, redo, activeGraph, addNode, activeGraphId } = useGraphStore()
   const { openCommandPalette, closeCommandPalette, setActiveNav, activeNavId, rightPanelOpen } = useUiStore()
+
+  // Secret admin toggle: Ctrl+Shift+Alt+A
+  const handleAdminKey = useCallback((e: KeyboardEvent) => {
+    if (e.ctrlKey && e.shiftKey && e.altKey && e.key === 'A') {
+      if (isAdmin) { lock() } else { unlock('cortex-fx-admin-2024') }
+    }
+  }, [isAdmin, unlock, lock])
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleAdminKey)
+    return () => window.removeEventListener('keydown', handleAdminKey)
+  }, [handleAdminKey])
 
   // Load vaults + global node library on startup
   useEffect(() => {

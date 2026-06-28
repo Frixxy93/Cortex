@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useNodeStore } from '@/stores/node.store'
 import { useUiStore } from '@/stores/ui.store'
+import { useAdminStore } from '@/stores/admin.store'
 
 export function NodeBulkActions() {
   const { getAllNodes, deleteNode } = useNodeStore()
   const { addToast } = useUiStore()
+  const { isAdmin } = useAdminStore()
   const [confirmClear, setConfirmClear] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -22,7 +24,7 @@ export function NodeBulkActions() {
     addToast(`Removed ${count} nodes`, { variant: 'default' })
   }
 
-  if (nodes.length === 0) return null
+  if (nodes.length === 0 || !isAdmin) return null
 
   return (
     <div className="p-3 border-t border-cx-border">

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useBridgeStore } from '@/stores/bridge.store'
 import { useUiStore } from '@/stores/ui.store'
+import { useAdminStore } from '@/stores/admin.store'
 import { cn } from '@/utils/cn'
 
 const SOFTWARE_ICONS: Record<string, string> = {
@@ -25,6 +26,7 @@ export function BridgePanel({ onClose }: Props) {
     startServer, stopServer, detectSoftware, refreshClients, importNodes,
   } = useBridgeStore()
   const { addToast } = useUiStore()
+  const { isAdmin } = useAdminStore()
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Auto-detect on open
@@ -134,8 +136,8 @@ export function BridgePanel({ onClose }: Props) {
             </div>
           )}
 
-          {/* Import button */}
-          {serverRunning && (
+          {/* Import button — admin only */}
+          {serverRunning && isAdmin && (
             <button
               onClick={handleImport}
               disabled={isImporting}

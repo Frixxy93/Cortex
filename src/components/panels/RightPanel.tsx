@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNodeStore } from '@/stores/node.store'
 import { useGraphStore } from '@/stores/graph.store'
 import { useUiStore } from '@/stores/ui.store'
+import { useAdminStore } from '@/stores/admin.store'
 import { ParameterEditor } from '@/components/inspector/ParameterEditor'
 import { CATEGORY_COLORS, NODE_OBJECT_TYPE_ICONS, OBJECT_TYPES } from '@/utils/constants'
 import { cn } from '@/utils/cn'
@@ -13,6 +14,7 @@ type TabId = 'overview' | 'parameters' | 'inputs' | 'outputs' | 'notes'
 export function RightPanel() {
   const [activeTab, setActiveTab] = useState<TabId>('overview')
   const selectedNode = useNodeStore(s => s.selectedNode())
+  const { isAdmin } = useAdminStore()
 
   const tabs: { id: TabId; label: string; count?: number }[] = [
     { id: 'overview',   label: 'Overview' },
@@ -315,6 +317,7 @@ function OverviewTab({ node }: { node: CortexNode }) {
 function ParametersTab({ node }: { node: CortexNode }) {
   const { updateNode } = useNodeStore()
   const { addToast } = useUiStore()
+  const { isAdmin } = useAdminStore()
   const [search, setSearch] = useState('')
 
   const filtered = node.parameters.filter(p =>
@@ -356,28 +359,30 @@ function ParametersTab({ node }: { node: CortexNode }) {
           <ParameterEditor
             key={node.id}
             parameters={filtered}
-            onParamsChange={async params => updateNode({ id: node.id, parameters: params })} />
+            onParamsChange={isAdmin ? async params => updateNode({ id: node.id, parameters: params }) : undefined} />
         )}
-        <button
-          onClick={async () => {
-            const newParam: Parameter = {
-              id: crypto.randomUUID(), // must be a valid UUID — Rust deserializes Parameter.id as Uuid
-              name: 'new_param', displayName: 'New Parameter',
-              paramType: 'float', defaultValue: 0, sortOrder: node.parameters.length,
-              performanceImpact: 'none', isAnimatable: false, isExpressionCapable: false,
-            }
-            try {
-              await updateNode({ id: node.id, parameters: [...node.parameters, newParam] })
-              addToast('Parameter added', { variant: 'success' })
-            } catch (e) {
-              addToast(`Failed to add parameter: ${e}`, { variant: 'error' })
-            }
-          }}
-          className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg
-                     border border-dashed border-cx-border text-[11px] text-cx-text-muted
-                     hover:text-cx-accent hover:border-cx-accent/40 transition-all">
-          <span className="text-cx-accent text-base leading-none">+</span> Add Parameter
-        </button>
+        {isAdmin && (
+          <button
+            onClick={async () => {
+              const newParam: Parameter = {
+                id: crypto.randomUUID(),
+                name: 'new_param', displayName: 'New Parameter',
+                paramType: 'float', defaultValue: 0, sortOrder: node.parameters.length,
+                performanceImpact: 'none', isAnimatable: false, isExpressionCapable: false,
+              }
+              try {
+                await updateNode({ id: node.id, parameters: [...node.parameters, newParam] })
+                addToast('Parameter added', { variant: 'success' })
+              } catch (e) {
+                addToast(`Failed to add parameter: ${e}`, { variant: 'error' })
+              }
+            }}
+            className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg
+                       border border-dashed border-cx-border text-[11px] text-cx-text-muted
+                       hover:text-cx-accent hover:border-cx-accent/40 transition-all">
+            <span className="text-cx-accent text-base leading-none">+</span> Add Parameter
+          </button>
+        )}
       </div>
     </div>
   )
@@ -466,29 +471,34 @@ function PortListEditor({ node, portKey, accentColor, label }: {
 /* ── Notes Tab ───────────────────────────────────────────── */
 function NotesTab({ node }: { node: CortexNode }) {
   const { updateNode } = useNodeStore()
+  const { isAdmin } = useAdminStore()
   const [notes, setNotes] = useState(node.notes ?? '')
   const [docs,  setDocs]  = useState(node.documentation ?? '')
   useEffect(() => { setNotes(node.notes ?? ''); setDocs(node.documentation ?? '') }, [node.id])
 
   return (
     <div className="p-3 space-y-4">
-      <Field label="Personal Notes">
-        <textarea value={notes} onChange={e => setNotes(e.target.value)}
-          onBlur={() => updateNode({ id: node.id, notes })}
-          rows={6} placeholder="Your notes about this node…"
+      <Field label="Notes">
+        <textarea value={notes}
+          onChange={isAdmin ? e => setNotes(e.target.value) : undefined}
+          onBlur={isAdmin ? () => updateNode({ id: node.id, notes }) : undefined}
+          readOnly={!isAdmin}
+          rows={6} placeholder={isAdmin ? "Your notes about this node…" : "No notes yet."}
           className="w-full bg-cx-elevated border border-cx-border rounded-xl px-3 py-2
                      text-[11px] text-cx-text-dim leading-relaxed resize-none
                      focus:outline-none focus:border-cx-accent transition-colors
-                     placeholder:text-cx-text-muted/40" />
+                     placeholder:text-cx-text-muted/40 read-only:opacity-60 read-only:cursor-default" />
       </Field>
       <Field label="Documentation">
-        <textarea value={docs} onChange={e => setDocs(e.target.value)}
-          onBlur={() => updateNode({ id: node.id, documentation: docs })}
-          rows={4} placeholder="Paste a doc URL or reference text…"
+        <textarea value={docs}
+          onChange={isAdmin ? e => setDocs(e.target.value) : undefined}
+          onBlur={isAdmin ? () => updateNode({ id: node.id, documentation: docs }) : undefined}
+          readOnly={!isAdmin}
+          rows={4} placeholder={isAdmin ? "Paste a doc URL or reference text…" : ""}
           className="w-full bg-cx-elevated border border-cx-border rounded-xl px-3 py-2
                      text-[11px] text-cx-text-dim leading-relaxed resize-none
                      focus:outline-none focus:border-cx-accent transition-colors
-                     placeholder:text-cx-text-muted/40" />
+                     placeholder:text-cx-text-muted/40 read-only:opacity-60 read-only:cursor-default" />
       </Field>
       {docs.startsWith('http') && (
         <a href={docs} target="_blank" rel="noreferrer"

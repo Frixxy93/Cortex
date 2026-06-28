@@ -3,6 +3,7 @@ import { useSettingsStore } from '@/stores/settings.store'
 import { useAiStore } from '@/stores/ai.store'
 import { useUiStore } from '@/stores/ui.store'
 import { useNodeStore } from '@/stores/node.store'
+import { useAdminStore } from '@/stores/admin.store'
 import { NodeService } from '@/services/node.service'
 import { cn } from '@/utils/cn'
 import type { AiProvider } from '@/types'
@@ -49,6 +50,8 @@ export function SettingsPanel({ onClose }: Props) {
   const { addToast, rightPanelOpen, toggleRightPanel } = useUiStore()
   const { getAllNodes } = useNodeStore()
 
+  const { isAdmin } = useAdminStore()
+
   const [aiKey, setAiKey] = useState(apiKey ?? '')
   const [aiModel, setAiModel] = useState(model ?? '')
   const [reseeding,       setReseeding]       = useState(false)
@@ -56,7 +59,7 @@ export function SettingsPanel({ onClose }: Props) {
   const [clearAllConfirm, setClearAllConfirm] = useState(false)
   const [resetConfirm,    setResetConfirm]    = useState(false)
 
-  const nodeCount = getAllNodes().length
+const nodeCount = getAllNodes().length
 
   const handleAccent = (color: string) => {
     s.set({ accentColor: color })
@@ -329,14 +332,17 @@ export function SettingsPanel({ onClose }: Props) {
                       Global library · 3,273 in seed
                     </div>
                   </div>
-                  <button onClick={handleReseed} disabled={reseeding}
-                    className="px-3 py-1.5 rounded-lg bg-cx-elevated border border-cx-border text-[11px]
-                               text-cx-text-muted hover:text-cx-text disabled:opacity-50 transition-colors">
-                    {reseeding ? 'Seeding…' : 'Re-seed Nodes'}
-                  </button>
+                  {isAdmin && (
+                    <button onClick={handleReseed} disabled={reseeding}
+                      className="px-3 py-1.5 rounded-lg bg-cx-elevated border border-cx-border text-[11px]
+                                 text-cx-text-muted hover:text-cx-text disabled:opacity-50 transition-colors">
+                      {reseeding ? 'Seeding…' : 'Re-seed Nodes'}
+                    </button>
+                  )}
                 </div>
               </SettingGroup>
 
+              {isAdmin && (
               <SettingGroup label="Danger Zone">
                 <p className="text-[11px] text-cx-text-muted mb-3">
                   Permanently remove all nodes from every vault. This cannot be undone.
@@ -363,6 +369,7 @@ export function SettingsPanel({ onClose }: Props) {
                   </button>
                 )}
               </SettingGroup>
+              )}
 
               <SettingGroup label="Export Vault Data">
                 <p className="text-[11px] text-cx-text-muted mb-2">

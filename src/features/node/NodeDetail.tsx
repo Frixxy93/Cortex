@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNodeStore } from '@/stores/node.store'
 import { useUiStore } from '@/stores/ui.store'
+import { useAdminStore } from '@/stores/admin.store'
 import { CATEGORY_COLORS } from '@/utils/constants'
 import type { CortexNode } from '@/types'
 
@@ -9,6 +10,7 @@ interface Props { node: CortexNode }
 export function NodeDetail({ node }: Props) {
   const { updateNode, deleteNode } = useNodeStore()
   const { addToast } = useUiStore()
+  const { isAdmin } = useAdminStore()
   const [notes, setNotes] = useState(node.notes ?? '')
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -107,7 +109,8 @@ export function NodeDetail({ node }: Props) {
         />
       </div>
 
-      {/* Delete */}
+      {/* Delete — admin only */}
+      {isAdmin && (
       <div className="pt-1 border-t border-cx-border">
         {confirmDelete ? (
           <div className="flex gap-2">
@@ -127,6 +130,7 @@ export function NodeDetail({ node }: Props) {
           </button>
         )}
       </div>
+      )}
     </div>
   )
 }
