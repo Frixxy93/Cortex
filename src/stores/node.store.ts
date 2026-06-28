@@ -89,4 +89,9 @@ export const useNodeStore = create<NodeStore>()(
     },
 
     seedHoudiniNodes: async () => {
-      // Delegates to Rust — clears DB and re-runs the embedded SQL s
+      // Delegates to Rust — clears DB and re-runs the embedded SQL seed
+      await NodeService.reseedAll()
+      await useNodeStore.getState().loadNodes()
+    },
+  }))
+)

@@ -163,4 +163,73 @@ button:focus-visible { outline-offset: 1px; }
   background-size: 32px 32px;
 }
 
-/* ── React Flow overrid
+/* ── React Flow overrides ────────────────────────────────── */
+.cortex-canvas .react-flow__renderer { background: transparent; }
+.cortex-canvas .react-flow__pane     { cursor: default; }
+.cortex-canvas .react-flow__edge-path { stroke: rgba(123,111,255,0.4) !important; stroke-width: 1.5 !important; }
+.cortex-canvas .react-flow__edge.selected .react-flow__edge-path { stroke: rgba(123,111,255,0.8) !important; }
+.cortex-canvas .react-flow__connection-path { stroke: rgba(123,111,255,0.6) !important; stroke-width: 1.5 !important; }
+
+.cortex-canvas .react-flow__controls {
+  background: var(--cx-elevated) !important;
+  border: 1px solid var(--cx-border) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04) !important;
+}
+.cortex-canvas .react-flow__controls button {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid var(--cx-border) !important;
+  color: var(--cx-text-dim) !important;
+  fill: var(--cx-text-dim) !important;
+  width: 32px !important;
+  height: 32px !important;
+  transition: all 0.15s !important;
+}
+.cortex-canvas .react-flow__controls button:last-child { border-bottom: none !important; }
+.cortex-canvas .react-flow__controls button:hover {
+  background: var(--cx-overlay) !important;
+  color: var(--cx-accent) !important;
+  fill: var(--cx-accent) !important;
+}
+.cortex-canvas .react-flow__minimap {
+  background: var(--cx-surface) !important;
+  border: 1px solid var(--cx-border) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
+}
+.cortex-canvas .react-flow__minimap-mask { fill: rgba(5,5,12,0.75) !important; }
+
+/* ── Input base ──────────────────────────────────────────── */
+.cx-input {
+  width: 100%;
+  background: var(--cx-elevated);
+  border: 1px solid var(--cx-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--cx-text);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.cx-input::placeholder { color: var(--cx-text-muted); }
+.cx-input:focus {
+  border-color: rgba(123,111,255,0.5);
+  box-shadow: 0 0 0 3px rgba(123,111,255,0.1);
+}
+
+/* ── Tag pill ────────────────────────────────────────────── */
+.cx-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  background: rgba(123,111,255,0.1);
+  color: rgba(180,175,255,0.9);
+  border: 1px solid rgba(123,111,255,0.18);
+}
