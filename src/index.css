@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design tokens ─────────────────────────────────────── */
+:root {
+  --cx-bg:           #07070f;
+  --cx-surface:      #0c0c1a;
+  --cx-elevated:     #111127;
+  --cx-overlay:      #16162e;
+  --cx-border:       #1c1c35;
+  --cx-border-bright:#2a2a50;
+  --cx-accent:       #7b6fff;
+  --cx-accent-dim:   #5a53cc;
+  --cx-text:         #e2e2f0;
+  --cx-text-dim:     #8888b8;
+  --cx-text-muted:   #44447a;
+  --cx-success:      #34d399;
+  --cx-warning:      #fbbf24;
+  --cx-error:        #f87171;
+
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%; width: 100%;
+  overflow: hidden;
+  background: var(--cx-bg);
+  color: var(--cx-text);
+}
+
+/* ── Scrollbars ──────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2a50; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a70; }
+
+/* ── Selection ───────────────────────────────────────────── */
+::selection { background: rgba(123,111,255,0.28); }
+
+/* ── Focus ───────────────────────────────────────────────── */
+:focus-visible { outline: 1.5px solid rgba(123,111,255,0.7); outline-offset: 2px; border-radius: 4px; }
+button:focus-visible, [role=button]:focus-visible { outline-offset: 1px; }
+
+/* ── Glassmorphism utility ───────────────────────────────── */
+@layer utilities {
+  .glass {
+    background: rgba(12, 12, 26, 0.75);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  }
+  .glass-light {
+    background: rgba(17, 17, 39, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .gradient-border {
+    position: relative;
+  }
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(123,111,255,0.3) 0%, rgba(123,111,255,0.05) 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  .no-drag  { -webkit-app-region: no-drag; }
+  .drag     { -webkit-app-region: drag; }
+}
+
+/* ── React Flow overrides ────────────────────────────────── */
+.cortex-canvas .react-flow__renderer    { background: transparent; }
+.cortex-canvas .react-flow__pane        { cursor: default; }
+
+.cortex-canvas .react-flow__controls {
+  background: var(--cx-elevated) !important;
+  border: 1px solid var(--cx-border) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4) !important;
+}
+.cortex-canvas .react-flow__controls button {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid var(--cx-border) !important;
+  color: var(--cx-text-dim) !important;
+  fill: var(--cx-text-dim) !important;
+  width: 32px !important;
+  height: 32px !important;
+}
+.cortex-canvas .react-flow__controls button:last-child {
+  border-bottom: none !important;
+}
+.cortex-canvas .react-flow__controls button:hover {
+  background: var(--cx-overlay) !important;
+  color: var(--cx-accent) !important;
+  fill: var(--cx-accent) !important;
+}
+
+.cortex-canvas .react-flow__minimap {
+  background: var(--cx-surface) !important;
+  border: 1px solid var(--cx-border) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+}
+.cortex-canvas .react-flow__minimap-mask { fill: rgba(7,7,15,0.7) !important; }
+
+/* Animated canvas dot grid */
+.canvas-grid {
+  background-image: radial-gradient(circle, #1c1c35 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* ── Input base ──────────────────────────────────────────── */
+.cx-input {
+  width: 100%;
+  background: var(--cx-elevated);
+  border: 1px solid var(--cx-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--cx-text);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.cx-input::placeholder { color: var(--cx-text-muted); }
+.cx-input:focus {
+  border-color: rgba(123,111,255,0.6);
+  box-shadow: 0 0 0 3px rgba(123,111,255,0.12);
+}
+
+/* ── Tag ─────────────────────────────────────────────────── */
+.cx-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  background: rgba(123,111,255,0.12);
+  color: rgba(123,111,255,0.9);
+  border: 1px solid rgba(123,111,255,0.2);
+}

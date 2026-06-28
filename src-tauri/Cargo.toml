@@ -1,0 +1,83 @@
+[package]
+name = "cortex"
+version = "0.1.0"
+description = "CORTEX — Procedural Intelligence Platform & Knowledge Operating System"
+authors = ["CORTEX Team"]
+license = ""
+repository = ""
+edition = "2021"
+rust-version = "1.77.2"
+
+[package.metadata]
+
+[lib]
+name = "cortex_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["macos-private-api"] }
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-notification = "2"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Database
+rusqlite = { version = "0.31", features = ["bundled", "backup", "functions"] }
+r2d2 = "0.8"
+r2d2_sqlite = "0.24"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# File system / UUID
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# AI clients (HTTP)
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# Search / indexing
+tantivy = "0.22"
+
+# File parsing (for import engine)
+zip = "2"
+
+# Hashing
+sha2 = "0.10"
+
+# Image decoding (for runtime window icon)
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+# VFX Bridge — WebSocket server
+tokio-tungstenite = { version = "0.24", features = [] }
+futures-util = "0.3"
+
+[features]
+# This feature is used for production builds or when a dev server is not specified
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
