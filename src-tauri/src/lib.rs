@@ -20,27 +20,27 @@ use engines::{
 use storage::database::{create_pool, init_database, DbPool};
 
 pub struct AppState {
-    pub vault_engine: VaultEngine,
-    pub node_engine: NodeEngine,
-    pub graph_engine: GraphEngine,
-    pub relationship_engine: RelationshipEngine,
-    pub search_engine: SearchEngine,
-    pub asset_engine: AssetEngine,
-    pub analytics_engine: AnalyticsEngine,
-    pub bridge_engine: BridgeEngine,
+    pub vault_engine:         VaultEngine,
+    pub node_engine:          NodeEngine,
+    pub graph_engine:         GraphEngine,
+    pub relationship_engine:  RelationshipEngine,
+    pub search_engine:        SearchEngine,
+    pub asset_engine:         AssetEngine,
+    pub analytics_engine:     AnalyticsEngine,
+    pub bridge_engine:        BridgeEngine,
 }
 
 impl AppState {
     fn new(pool: DbPool) -> Self {
         Self {
-            vault_engine: VaultEngine::new(pool.clone()),
-            node_engine: NodeEngine::new(pool.clone()),
-            graph_engine: GraphEngine::new(pool.clone()),
+            vault_engine:        VaultEngine::new(pool.clone()),
+            node_engine:         NodeEngine::new(pool.clone()),
+            graph_engine:        GraphEngine::new(pool.clone()),
             relationship_engine: RelationshipEngine::new(pool.clone()),
-            search_engine: SearchEngine::new(pool.clone()),
-            asset_engine: AssetEngine::new(pool.clone()),
-            analytics_engine: AnalyticsEngine::new(pool),
-            bridge_engine: BridgeEngine::new(),
+            search_engine:       SearchEngine::new(pool.clone()),
+            asset_engine:        AssetEngine::new(pool.clone()),
+            analytics_engine:    AnalyticsEngine::new(pool.clone()),
+            bridge_engine:       BridgeEngine::new(),
         }
     }
 }
@@ -59,7 +59,6 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
-            // Set window icon at runtime (overrides any OS-cached icon)
             #[cfg(target_os = "windows")]
             {
                 if let Some(window) = app.get_webview_window("main") {
@@ -77,35 +76,34 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
-
-            std::fs::create_dir_all(&app_data_dir)
-                .expect("Failed to create app data directory");
+            std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data directory");
 
             let db_path = app_data_dir.join("cortex.db");
-            let pool = create_pool(&db_path).expect("Failed to create database pool");
-
+            let pool    = create_pool(&db_path).expect("Failed to create database pool");
             {
                 let conn = pool.get().expect("Failed to get DB connection");
                 init_database(&conn).expect("Failed to initialize database");
             }
 
-            let state = AppState::new(pool);
+            let state = AppState::new(pool.clone());
 
-            // Auto-start VFX bridge. Emits "bridge:ready" with node count when DCC sends catalogue.
+            // Start VFX bridge. When a DCC sends its node catalogue,
+            // nodes are saved to DB and "vfx:imported" is emitted to the frontend.
             {
                 let handle = app.handle().clone();
-                if let Err(e) = state.bridge_engine.start(move |count| {
-                    tracing::info!("Bridge: {count} nodes buffered — emitting bridge:ready");
-                    let _ = handle.emit("bridge:ready", count);
+                if let Err(e) = state.bridge_engine.start(pool, move |software, count| {
+                    tracing::info!("Bridge: {count} nodes imported from {software}");
+                    let _ = handle.emit("vfx:imported", serde_json::json!({
+                        "software": software,
+                        "count":    count,
+                    }));
                 }) {
                     tracing::warn!("Bridge start failed: {e}");
                 }
             }
 
             app.manage(state);
-
             tracing::info!("CORTEX initialized. DB: {}", db_path.display());
-
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -126,6 +124,7 @@ pub fn run() {
             commands::node::clear_all_nodes,
             commands::node::list_all_nodes,
             commands::node::reseed_nodes,
+            commands::node::generate_node_seed,
             // Graphs
             commands::graph::list_graphs,
             commands::graph::get_graph,
@@ -134,28 +133,4 @@ pub fn run() {
             commands::graph::delete_graph,
             // Relationships
             commands::relationship::get_relationships,
-            commands::relationship::create_relationship,
-            commands::relationship::delete_relationship,
-            // Search
-            commands::search::search,
-            // Assets
-            commands::asset::list_assets,
-            commands::asset::import_asset,
-            // Analytics
-            commands::analytics::get_analytics,
-            commands::analytics::track_event,
-            // AI
-            commands::ai::ai_chat,
-            // Import
-            commands::import::import_file,
-            // VFX Bridge
-            commands::bridge::bridge_start,
-            commands::bridge::bridge_stop,
-            commands::bridge::bridge_clients,
-            commands::bridge::bridge_detect,
-            commands::bridge::bridge_drain,
-            commands::bridge::bridge_exec_cmd,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running CORTEX");
-}
+ 

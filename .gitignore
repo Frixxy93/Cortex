@@ -44,9 +44,3 @@ Thumbs.db
 /data/
 *.cortex-vault
 *.cortex-blueprint
-
-# Signing keys — NEVER commit these
-cortex.key
-cortex.key.pub
-*.key
-*.key.pub

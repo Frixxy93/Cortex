@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useVaultStore } from '@/stores/vault.store'
 import { useNodeStore } from '@/stores/node.store'
 import { useUiStore } from '@/stores/ui.store'
+import { useAdminStore } from '@/stores/admin.store'
 import { cn } from '@/utils/cn'
 import { SOFTWARE_COLORS } from '@/utils/constants'
 
@@ -36,6 +37,7 @@ export function LeftSidebar({ onOpenSettings, onOpenBridge }: { onOpenSettings?:
   const { vaults, activeVaultId, setActiveVault, deleteVault, updateVault } = useVaultStore()
   const getVaultNodes = useNodeStore(s => s.getVaultNodes)
   const { openCommandPalette, toggleNav, setActiveNav, activeNavId, addToast, setTagFilter, activeTagFilter } = useUiStore()
+  const { isAdmin } = useAdminStore()
 
   const [vaultsExpanded, setVaultsExpanded] = useState(true)
   const [tagsExpanded, setTagsExpanded] = useState(true)
@@ -241,11 +243,17 @@ export function LeftSidebar({ onOpenSettings, onOpenBridge }: { onOpenSettings?:
       {/* Bottom bar */}
       <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(24,24,58,0.7)', background: 'rgba(5,5,12,0.6)' }}>
         <div className="flex items-center gap-1.5 px-3 py-2.5">
-          <button onClick={onOpenBridge} title="VFX Software Bridge"
-            className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150
-                       text-cx-text-muted hover:text-cx-text hover:bg-cx-elevated/80 flex-shrink-0">
-            <BridgeIcon />
-          </button>
+          {isAdmin && (
+            <button onClick={onOpenBridge} title="VFX Import (Admin)"
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150
+                         text-cx-text-muted hover:text-cx-text hover:bg-cx-elevated/80 flex-shrink-0">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 9 Q3.5 5 7 5 Q10.5 5 13 9"/>
+                <line x1="3" y1="9" x2="3" y2="12"/><line x1="11" y1="9" x2="11" y2="12"/>
+                <line x1="1" y1="12" x2="13" y2="12"/>
+              </svg>
+            </button>
+          )}
           <button onClick={onOpenSettings} title="Settings"
             className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150
                        text-cx-text-muted hover:text-cx-text hover:bg-cx-elevated/80 flex-shrink-0">
@@ -322,5 +330,4 @@ function SearchNavIcon() { return <svg width="14" height="14" viewBox="0 0 14 14
 function AnalyticsIcon() { return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 11 L5 7 L8 9 L12 3"/><circle cx="12" cy="3" r="1" fill="currentColor" stroke="none"/></svg> }
 function ImportIcon()    { return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7 1.5 L7 9.5"/><path d="M4 7 L7 10 L10 7"/><path d="M2 12 H12"/></svg> }
 function AiIcon()        { return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 2.5h4M7 2.5v2M3.5 4.5h7l1 6H2.5l1-6zM5.5 7.5h3M7 7.5v1.5"/></svg> }
-function SettingsSmIcon() { return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="7" cy="7" r="2.2"/><path d="M7 1v1.5M7 11.5V13M1 7h1.5M11.5 7H13"/><path d="M2.6 2.6l1.1 1.1M10.3 10.3l1.1 1.1M2.6 11.4l1.1-1.1M10.3 3.7l1.1-1.1"/></svg> }
-function BridgeIcon()    { return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 9 Q3.5 5 7 5 Q10.5 5 13 9"/><line x1="3" y1="9" x2="3" y2="12"/><line x1="11" y1="9" x2="11" y2="12"/><line x1="1" y1="12" x2="13" y2="12"/></svg> }
+function SettingsSmIcon() { return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="7" c

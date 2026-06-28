@@ -59,15 +59,15 @@ tantivy = "0.22"
 # File parsing (for import engine)
 zip = "2"
 
+# VFX Bridge — WebSocket server
+tokio-tungstenite = { version = "0.24", features = [] }
+futures-util = "0.3"
+
 # Hashing
 sha2 = "0.10"
 
 # Image decoding (for runtime window icon)
 image = { version = "0.25", default-features = false, features = ["png"] }
-
-# VFX Bridge — WebSocket server
-tokio-tungstenite = { version = "0.24", features = [] }
-futures-util = "0.3"
 
 [features]
 # This feature is used for production builds or when a dev server is not specified
@@ -79,7 +79,4 @@ incremental = true
 
 [profile.release]
 panic = "abort"
-codegen-units = 1
-lto = true
-opt-level = "s"
-strip = true
+code

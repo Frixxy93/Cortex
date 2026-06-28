@@ -1,11 +1,10 @@
-/// CORTEX VFX Bridge — clean rewrite
-/// WebSocket server on ws://127.0.0.1:7878
-/// DCC connects → sends HELLO → CORTEX asks for nodes → DCC sends NODE_CATALOGUE
+/// CORTEX VFX Bridge — WebSocket import server
+/// DCC connects → HELLO → CORTEX sends REQUEST_NODES
+/// DCC sends NODE_CATALOGUE with parameters → saved directly to DB
 
 use std::{
     collections::HashMap,
     net::SocketAddr,
-    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
@@ -15,24 +14,17 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use uuid::Uuid;
 
-use crate::error::CortexError;
+use crate::{
+    domain::{
+        node::{CreateNodeInput, NodeCategory, NodeObjectType, NodePort},
+        parameter::{Parameter, ParameterOption, ParameterType, PerformanceImpact},
+    },
+    engines::node::NodeEngine,
+    error::CortexError,
+    storage::database::DbPool,
+};
 
 // ── Public types ──────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BridgeNode {
-    pub name:         String,
-    pub display_name: String,
-    pub category:     String,
-    #[serde(default)]
-    pub description:  String,
-    #[serde(default)]
-    pub max_inputs:   u32,
-    #[serde(default = "one")]
-    pub max_outputs:  u32,
-}
-fn one() -> u32 { 1 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,7 +43,51 @@ pub struct DetectedSoftware {
     pub kind:    String,
 }
 
-// ── Protocol ──────────────────────────────────────────────────────────────────
+// ── Incoming node format from Python scripts ──────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BridgeParam {
+    name:  String,
+    label: String,
+    #[serde(rename = "type")]
+    ptype: String,
+    #[serde(default)]
+    default: Option<serde_json::Value>,
+    #[serde(default)]
+    min:    Option<serde_json::Value>,
+    #[serde(default)]
+    max:    Option<serde_json::Value>,
+    #[serde(default)]
+    options: Option<Vec<BridgeParamOption>>,
+    #[serde(default)]
+    group:  Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BridgeParamOption {
+    value: serde_json::Value,
+    label: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BridgeNode {
+    name:         String,
+    display_name: String,
+    category:     String,
+    #[serde(default)]
+    description:  Option<String>,
+    #[serde(default)]
+    max_inputs:   u32,
+    #[serde(default = "one")]
+    max_outputs:  u32,
+    #[serde(default)]
+    parameters:   Vec<BridgeParam>,
+}
+fn one() -> u32 { 1 }
+
+// ── WebSocket protocol ────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "SCREAMING_SNAKE_CASE")]
@@ -75,10 +111,7 @@ enum InMsg {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "SCREAMING_SNAKE_CASE")]
 enum OutMsg {
-    Welcome {
-        #[serde(rename = "serverVersion")]
-        server_version: String,
-    },
+    Welcome { #[serde(rename = "serverVersion")] server_version: String },
     RequestNodes,
     Pong,
     Error { message: String },
@@ -87,12 +120,10 @@ enum OutMsg {
 // ── Engine ────────────────────────────────────────────────────────────────────
 
 type Clients    = Arc<Mutex<HashMap<String, ConnectedClient>>>;
-type NodeBuffer = Arc<Mutex<Vec<BridgeNode>>>;
 
 pub struct BridgeEngine {
     pub port:    u16,
     clients:     Clients,
-    buffer:      NodeBuffer,
     shutdown_tx: Arc<Mutex<Option<tokio::sync::broadcast::Sender<()>>>>,
 }
 
@@ -101,21 +132,24 @@ impl BridgeEngine {
         Self {
             port:        7878,
             clients:     Arc::new(Mutex::new(HashMap::new())),
-            buffer:      Arc::new(Mutex::new(Vec::new())),
             shutdown_tx: Arc::new(Mutex::new(None)),
         }
     }
 
-    /// Start WS server. Idempotent — returns port if already running.
-    pub fn start(&self, on_nodes: impl Fn(usize) + Send + Sync + 'static) -> Result<u16, CortexError> {
+    /// Start WS server. On receiving NODE_CATALOGUE: deletes existing nodes for
+    /// that software, batch-inserts new ones with parameters, fires `on_imported`.
+    pub fn start(
+        &self,
+        pool: DbPool,
+        on_imported: impl Fn(String, usize) + Send + Sync + 'static,
+    ) -> Result<u16, CortexError> {
         if self.shutdown_tx.lock().unwrap().is_some() {
             return Ok(self.port);
         }
 
         let port    = self.port;
         let clients = self.clients.clone();
-        let buffer  = self.buffer.clone();
-        let cb      = Arc::new(on_nodes);
+        let cb      = Arc::new(on_imported);
 
         let (tx, _) = tokio::sync::broadcast::channel::<()>(1);
         *self.shutdown_tx.lock().unwrap() = Some(tx.clone());
@@ -141,14 +175,11 @@ impl BridgeEngine {
                         tokio::spawn(handle_conn(
                             stream, peer,
                             clients.clone(),
-                            buffer.clone(),
+                            pool.clone(),
                             cb.clone(),
                         ));
                     }
-                    _ = rx.recv() => {
-                        tracing::info!("Bridge: shut down");
-                        break;
-                    }
+                    _ = rx.recv() => { break; }
                 }
             }
         });
@@ -166,28 +197,24 @@ impl BridgeEngine {
     pub fn clients(&self) -> Vec<ConnectedClient> {
         self.clients.lock().unwrap().values().cloned().collect()
     }
-
-    /// Drain the node buffer — caller is responsible for persisting to DB.
-    pub fn drain(&self) -> Vec<BridgeNode> {
-        std::mem::take(&mut *self.buffer.lock().unwrap())
-    }
 }
 
 // ── Connection handler ────────────────────────────────────────────────────────
 
 async fn handle_conn(
-    stream:   TcpStream,
-    peer:     SocketAddr,
-    clients:  Clients,
-    buffer:   NodeBuffer,
-    on_nodes: Arc<dyn Fn(usize) + Send + Sync>,
+    stream:      TcpStream,
+    peer:        SocketAddr,
+    clients:     Clients,
+    pool:        DbPool,
+    on_imported: Arc<dyn Fn(String, usize) + Send + Sync>,
 ) {
     let ws = match accept_async(stream).await {
         Ok(ws) => ws,
         Err(e) => { tracing::warn!("Bridge: WS handshake {peer}: {e}"); return; }
     };
     let (mut tx, mut rx) = ws.split();
-    let conn_id = Uuid::new_v4().to_string();
+    let conn_id           = Uuid::new_v4().to_string();
+    let mut client_software = String::from("unknown");
 
     while let Some(Ok(msg)) = rx.next().await {
         let text = match msg {
@@ -202,7 +229,7 @@ async fn handle_conn(
             Err(e) => {
                 tracing::warn!("Bridge: bad msg from {peer}: {e}");
                 let _ = tx.send(Message::Text(
-                    serde_json::to_string(&OutMsg::Error { message: e.to_string() }).unwrap()
+                    serde_json::to_string(&OutMsg::Error { message: e.to_string() }).unwrap().into()
                 )).await;
                 continue;
             }
@@ -210,9 +237,8 @@ async fn handle_conn(
 
         match parsed {
             InMsg::Hello { software, version, client_id } => {
+                client_software = software.clone();
                 let id = if client_id.is_empty() { conn_id.clone() } else { client_id };
-                // Clear buffer for fresh session
-                buffer.lock().unwrap().clear();
                 clients.lock().unwrap().insert(id.clone(), ConnectedClient {
                     id, software: software.clone(), version: version.clone(),
                 });
@@ -220,22 +246,47 @@ async fn handle_conn(
                 let _ = tx.send(Message::Text(
                     serde_json::to_string(&OutMsg::Welcome {
                         server_version: env!("CARGO_PKG_VERSION").into(),
-                    }).unwrap()
+                    }).unwrap().into()
                 )).await;
                 let _ = tx.send(Message::Text(
-                    serde_json::to_string(&OutMsg::RequestNodes).unwrap()
+                    serde_json::to_string(&OutMsg::RequestNodes).unwrap().into()
                 )).await;
             }
+
             InMsg::NodeCatalogue { nodes, .. } => {
-                let count = nodes.len();
-                buffer.lock().unwrap().extend(nodes);
-                let total = buffer.lock().unwrap().len();
-                tracing::info!("Bridge: {count} nodes received, {total} buffered");
-                on_nodes(total);
+                let software   = client_software.clone();
+                let node_count = nodes.len();
+                tracing::info!("Bridge: received {node_count} nodes from {software}");
+
+                let pool2  = pool.clone();
+                let sw2    = software.clone();
+                let cb2    = on_imported.clone();
+
+                tokio::task::spawn_blocking(move || {
+                    let engine = NodeEngine::new(pool2);
+
+                    // Replace: delete old software nodes, insert new ones
+                    if let Err(e) = engine.delete_by_software(&sw2) {
+                        tracing::warn!("Bridge: delete_by_software failed: {e}");
+                    }
+
+                    let inputs: Vec<CreateNodeInput> = nodes.into_iter()
+                        .map(|n| bridge_node_to_input(n, &sw2))
+                        .collect();
+
+                    match engine.batch_create_nodes(inputs) {
+                        Ok(saved) => {
+                            tracing::info!("Bridge: saved {} nodes for {sw2}", saved.len());
+                            cb2(sw2, saved.len());
+                        }
+                        Err(e) => tracing::error!("Bridge: save failed: {e}"),
+                    }
+                }).await.ok();
             }
+
             InMsg::Ping => {
                 let _ = tx.send(Message::Text(
-                    serde_json::to_string(&OutMsg::Pong).unwrap()
+                    serde_json::to_string(&OutMsg::Pong).unwrap().into()
                 )).await;
             }
             InMsg::Pong => {}
@@ -246,6 +297,130 @@ async fn handle_conn(
     clients.lock().unwrap().retain(|_, c| c.id != conn_id);
 }
 
+// ── Node conversion ───────────────────────────────────────────────────────────
+
+fn bridge_node_to_input(node: BridgeNode, software: &str) -> CreateNodeInput {
+    let params: Vec<Parameter> = node.parameters.into_iter().enumerate()
+        .map(|(i, p)| Parameter {
+            id:          Uuid::new_v4(),
+            name:        p.name,
+            display_name: p.label,
+            param_type:  param_type(p.ptype.as_str()),
+            default_value: p.default,
+            min_value:   p.min,
+            max_value:   p.max,
+            options:     p.options.map(|opts| opts.into_iter().map(|o| ParameterOption {
+                value: o.value, label: o.label, icon: None,
+            }).collect()),
+            description: None,
+            group:       p.group,
+            visible_when:  None,
+            enabled_when:  None,
+            performance_impact: PerformanceImpact::None,
+            is_animatable:       true,
+            is_expression_capable: true,
+            sort_order:  i as i32,
+        })
+        .collect();
+
+    let inputs: Vec<NodePort> = (0..node.max_inputs.min(8)).map(|i| NodePort {
+        id:          format!("in_{i}"),
+        name:        format!("input{i}"),
+        data_type:   "any".into(),
+        required:    false,
+        multi:       false,
+        description: None,
+    }).collect();
+
+    let outputs: Vec<NodePort> = (0..node.max_outputs.min(4)).map(|i| NodePort {
+        id:          format!("out_{i}"),
+        name:        format!("output{i}"),
+        data_type:   "any".into(),
+        required:    false,
+        multi:       false,
+        description: None,
+    }).collect();
+
+    CreateNodeInput {
+        vault_id:    None,
+        software_id: None,
+        name:        node.name,
+        display_name: node.display_name,
+        category:    category(node.category.as_str()),
+        object_type: NodeObjectType::SoftwareNode,
+        description: node.description,
+        version:     None,
+        color:       software_color(software),
+        icon:        None,
+        tags:        vec![software.to_string()],
+        inputs,
+        outputs,
+        parameters:  params,
+        documentation: None,
+        notes:       None,
+        production_tips: vec![],
+        metadata:    Some(serde_json::json!({ "software": software })),
+    }
+}
+
+fn category(s: &str) -> NodeCategory {
+    match s {
+        "sop"       => NodeCategory::Sop,
+        "vop"       => NodeCategory::Vop,
+        "dop"       => NodeCategory::Dop,
+        "chop"      => NodeCategory::Chop,
+        "lop"       => NodeCategory::Lop,
+        "rop"       => NodeCategory::Rop,
+        "cop"       => NodeCategory::Cop,
+        "top"       => NodeCategory::Top,
+        "object"    => NodeCategory::Object,
+        "shader"    => NodeCategory::Shader,
+        "geometry"  => NodeCategory::Geometry,
+        "compositor"=> NodeCategory::Compositor,
+        "color"     => NodeCategory::Color,
+        "filter"    => NodeCategory::Filter,
+        "merge"     => NodeCategory::Merge,
+        "transform" => NodeCategory::Transform,
+        "channel"   => NodeCategory::Channel,
+        "draw"      => NodeCategory::Draw,
+        "deep"      => NodeCategory::Deep,
+        "material"  => NodeCategory::Material,
+        "math"      => NodeCategory::Math,
+        "utility"   => NodeCategory::Utility,
+        _           => NodeCategory::Other,
+    }
+}
+
+fn param_type(s: &str) -> ParameterType {
+    match s {
+        "string"                  => ParameterType::String,
+        "integer" | "int"         => ParameterType::Integer,
+        "float"                   => ParameterType::Float,
+        "boolean" | "bool"        => ParameterType::Boolean,
+        "enum" | "menu"           => ParameterType::Enum,
+        "vector2"                 => ParameterType::Vector2,
+        "vector3"                 => ParameterType::Vector3,
+        "vector4"                 => ParameterType::Vector4,
+        "color"                   => ParameterType::Color,
+        "file"                    => ParameterType::File,
+        "image"                   => ParameterType::Image,
+        "ramp"                    => ParameterType::Ramp,
+        "button"                  => ParameterType::Button,
+        "separator"               => ParameterType::Separator,
+        "label"                   => ParameterType::Label,
+        _                         => ParameterType::String,
+    }
+}
+
+fn software_color(software: &str) -> Option<String> {
+    match software {
+        "houdini" => Some("#FF6B35".into()),
+        "nuke"    => Some("#8BC34A".into()),
+        "katana"  => Some("#E8A020".into()),
+        _         => None,
+    }
+}
+
 // ── Software detection ────────────────────────────────────────────────────────
 
 pub fn detect_software() -> Vec<DetectedSoftware> {
@@ -253,20 +428,9 @@ pub fn detect_software() -> Vec<DetectedSoftware> {
 
     #[cfg(target_os = "windows")]
     {
-        scan_dir(&mut found, "houdini",  "Houdini",        r"C:\Program Files\Side Effects Software");
-        scan_dir(&mut found, "blender",  "Blender",        r"C:\Program Files\Blender Foundation");
-        scan_dir(&mut found, "maya",     "Maya",           r"C:\Program Files\Autodesk");
-        scan_dir(&mut found, "nuke",     "Nuke",           r"C:\Program Files");
-        scan_dir(&mut found, "unreal",   "Unreal Engine",  r"C:\Program Files\Epic Games");
-
-        // DaVinci Resolve — fixed path
-        let dv = std::path::Path::new(r"C:\Program Files\Blackmagic Design\DaVinci Resolve\Resolve.exe");
-        if dv.exists() {
-            found.push(DetectedSoftware {
-                id: "davinci_resolve".into(), name: "DaVinci Resolve".into(),
-                version: "".into(), kind: "davinci_resolve".into(),
-            });
-        }
+        scan_dir(&mut found, "houdini", "Houdini", r"C:\Program Files\Side Effects Software");
+        scan_dir(&mut found, "nuke",    "Nuke",    r"C:\Program Files");
+        scan_dir(&mut found, "katana",  "Katana",  r"C:\Program Files\Foundry");
     }
 
     found
@@ -275,48 +439,56 @@ pub fn detect_software() -> Vec<DetectedSoftware> {
 #[cfg(target_os = "windows")]
 fn scan_dir(out: &mut Vec<DetectedSoftware>, kind: &str, display: &str, root: &str) {
     let Ok(entries) = std::fs::read_dir(root) else { return };
-    let needle = kind.replace('_', " ").to_lowercase();
+    let needle     = kind.replace('_', " ").to_lowercase();
+    let disp_lower = display.to_lowercase();
+
     for e in entries.flatten() {
-        let name  = e.file_name().to_string_lossy().to_string();
-        let lower = name.to_lowercase();
-        if lower.contains(&needle) && e.path().is_dir() {
-            let ver = name.split_whitespace().last().unwrap_or("").to_string();
-            let id  = format!("{}_{}", kind, ver.replace('.', "_"));
-            // Avoid duplicates
-            if out.iter().any(|s| s.id == id) { continue; }
-            out.push(DetectedSoftware {
-                id,
-                name:    format!("{display} {ver}").trim().to_string(),
-                version: ver,
-                kind:    kind.to_string(),
-            });
-        }
+        let folder = e.file_name().to_string_lossy().to_string();
+        let lower  = folder.to_lowercase();
+        if !lower.contains(&needle) || !e.path().is_dir() { continue; }
+        if lower.contains("server") { continue; }
+
+        let ver = if folder.contains(' ') {
+            folder.split_whitespace()
+                .filter(|s| s.chars().any(|c| c.is_ascii_digit()))
+                .last()
+                .unwrap_or("")
+                .to_string()
+        } else {
+            let stripped = if lower.starts_with(&disp_lower) {
+                folder[disp_lower.len()..].to_string()
+            } else { folder.clone() };
+            stripped
+        };
+
+        let display_name = format!("{display} {ver}").trim().to_string();
+        let id = format!("{}_{}", kind, ver.replace(['.', ' '], "_"));
+        if out.iter().any(|s| s.id == id) { continue; }
+
+        out.push(DetectedSoftware { id, name: display_name, version: ver, kind: kind.to_string() });
     }
 }
 
 // ── Script writer ─────────────────────────────────────────────────────────────
 
-/// Write the bridge script to ~/Documents/cortex-bridge/<kind>.py
-/// and return the exec one-liner the user pastes into the DCC.
 pub fn write_exec_cmd(kind: &str) -> Result<String, CortexError> {
-    let script: &str = match kind {
-        "houdini" => include_str!("../../../bridge-plugins/cortex_bridge_houdini.py"),
-        "blender" => include_str!("../../../bridge-plugins/cortex_bridge_blender.py"),
-        _         => return Err(CortexError::Io(format!("No bridge script for '{kind}'"))),
-    };
+    let valid = ["houdini", "nuke", "katana"];
+    if !valid.contains(&kind) {
+        return Err(CortexError::Io(format!("No export script for '{kind}'")));
+    }
 
-    let home = home_dir().ok_or_else(|| CortexError::Io("Cannot resolve home dir".into()))?;
-    let dir  = home.join("Documents").join("cortex-bridge");
-    std::fs::create_dir_all(&dir).map_err(|e| CortexError::Io(e.to_string()))?;
+    // Point directly to the source export-scripts folder.
+    // CARGO_MANIFEST_DIR is the src-tauri directory at compile time;
+    // its parent is the project root (D:\FRIXXY\APP\cortex).
+    let scripts_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| CortexError::Io("Cannot resolve project root".into()))?
+        .join("export-scripts");
 
-    let path = dir.join(format!("cortex_bridge_{kind}.py"));
-    std::fs::write(&path, script).map_err(|e| CortexError::Io(e.to_string()))?;
+    let path = scripts_dir.join(format!("cortex_export_{kind}.py"));
+    let p    = path.to_string_lossy().to_string();
 
-    let p = path.to_string_lossy().replace('\\', "/");
     Ok(format!("exec(open(r\"{p}\").read())"))
 }
 
-pub fn home_dir() -> Option<PathBuf> {
-    std::env::var("USERPROFILE").ok().map(PathBuf::from)
-        .or_else(|| std::env::var("HOME").ok().map(PathBuf::from))
-}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
