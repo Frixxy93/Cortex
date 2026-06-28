@@ -41,7 +41,7 @@ lerna-debug.log*
 Thumbs.db
 
 # CORTEX local data (vaults are stored here by default, should not be committed)
-data/
+/data/
 *.cortex-vault
 *.cortex-blueprint
 
