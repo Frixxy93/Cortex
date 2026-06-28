@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "CORTEX",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.cortex.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -47,10 +47,4 @@
       "requireLiteralLeadingDot": false
     },
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI5OUJFQ0M0RTNBREI0QjEKUldTeHRLM2p4T3lidWFEZlNyTGd4OHkwOURxZXNYOXMyL3F1UG10SnM3bmpmY0dtRENkaXhuTnYK",
-      "endpoints": [
-        "https://github.com/Frixxy93/Cortex/releases/latest/download/latest.json"
-      ]
-    }
-  }
-}
+      "pubkey": "dW50cnVzdGVkIGNvbW1lb
