@@ -27,6 +27,7 @@ export const BridgeService = {
   connectedClients: ()                        => call<ConnectedClient[]>('bridge_connected_clients', {}),
   drainNodes:       ()                        => call<number>('bridge_drain_nodes', {}),
   getScript:        (softwareId: string)      => call<string>('bridge_get_script', { softwareId }),
+  getExecCmd:       (softwareId: string)      => call<string>('bridge_get_exec_cmd', { softwareId }),
   installAuto:      (softwareId: string)      => call<void>('bridge_install_auto', { softwareId }),
   uninstallAuto:    (softwareId: string)      => call<void>('bridge_uninstall_auto', { softwareId }),
   isInstalled:      (softwareId: string)      => call<boolean>('bridge_is_installed', { softwareId }),

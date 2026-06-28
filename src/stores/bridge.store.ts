@@ -145,7 +145,11 @@ export const useBridgeStore = create<BridgeState>()(
       BridgeService.onNodesReady(async (_count) => {
         await get().importNodes()
         await get().refreshClients()
-      }).then(fn => { unlisten = fn as unknown as () => void })
+      }).then(fn => {
+        unlisten = fn as unknown as () => void
+        // Drain anything buffered before the listener registered (race condition on startup)
+        get().importNodes()
+      })
       return () => { unlisten?.() }
     },
   }))

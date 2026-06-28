@@ -40,23 +40,38 @@ export function BridgePanel({ onClose }: Props) {
   } = useBridgeStore()
   const { addToast } = useUiStore()
   const pollRef  = useRef<ReturnType<typeof setInterval> | null>(null)
-  const [copying, setCopying] = useState<string | null>(null)
+  const [copying, setCopying]     = useState<string | null>(null)
+  const [execCmds, setExecCmds]   = useState<Record<string, string>>({})
 
   useEffect(() => {
     startServer()
     detectSoftware()
+    importNodes()
     pollRef.current = setInterval(refreshClients, 3000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [])
 
-  const handleCopyScript = async (id: string, name: string) => {
+  // Pre-fetch exec commands for all supported DCCs once detected
+  useEffect(() => {
+    if (!detected.length) return
+    const supported = ['houdini','blender','maya','nuke']
+    detected.filter(sw => supported.includes(sw.kind.toLowerCase())).forEach(sw => {
+      if (execCmds[sw.id]) return
+      BridgeService.getExecCmd(sw.id).then(cmd => {
+        setExecCmds(prev => ({ ...prev, [sw.id]: cmd }))
+      }).catch(() => {})
+    })
+  }, [detected])
+
+  const handleCopyCmd = async (id: string, name: string) => {
+    const cmd = execCmds[id]
+    if (!cmd) return
     setCopying(id)
     try {
-      const script = await BridgeService.getScript(id)
-      await navigator.clipboard.writeText(script)
-      addToast(`Script copied — paste & run in ${name}'s Python console`, { variant: 'success' })
+      await navigator.clipboard.writeText(cmd)
+      addToast(`Command copied — paste in ${name}'s Python console`, { variant: 'success' })
     } catch {
-      addToast('Could not copy script', { variant: 'error' })
+      addToast('Could not copy', { variant: 'error' })
     } finally {
       setTimeout(() => setCopying(null), 2000)
     }
@@ -193,7 +208,7 @@ export function BridgePanel({ onClose }: Props) {
                     {SW_ICONS[sw.kind.toLowerCase()] ?? '⬡'}
                   </div>
 
-                  {/* Info */}
+                  {/* Info + inline exec command */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-[13px] font-semibold" style={{ color: 'rgba(220,220,240,0.95)' }}>
@@ -205,35 +220,46 @@ export function BridgePanel({ onClose }: Props) {
                           LIVE
                         </span>
                       )}
-                      {sw.isInstalled && !client && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                              style={{ background: 'rgba(123,111,255,0.12)', color: 'rgba(160,155,255,0.8)', border: '1px solid rgba(123,111,255,0.2)' }}>
-                          READY
+                    </div>
+
+                    {supported && !client && execCmds[sw.id] ? (
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <code className="flex-1 min-w-0 text-[9px] px-2 py-1 rounded truncate"
+                              style={{ background: 'rgba(0,0,0,0.5)', color: `${color}dd`, border: `1px solid ${color}20`, fontFamily: 'monospace' }}>
+                          {execCmds[sw.id]}
+                        </code>
+                        <button onClick={() => handleCopyCmd(sw.id, sw.displayName)}
+                          className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[9px] font-semibold"
+                          style={{ background: `${color}18`, border: `1px solid ${color}35`, color }}>
+                          {copying === sw.id ? <CheckCopyIcon /> : <CopyScriptIcon />}
+                          {copying === sw.id ? 'Copied!' : 'Copy'}
+                        </button>
+                      </div>
+                    ) : supported && !client ? (
+                      <div className="text-[10px] mt-0.5" style={{ color: 'rgba(100,100,150,0.6)' }}>{consoleTip}</div>
+                    ) : client ? (
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <span className="text-[10px]" style={{ color: 'rgba(100,100,150,0.7)' }}>
+                          Connected · {client.version}
                         </span>
-                      )}
-                    </div>
-                    <div className="text-[10px] mt-0.5" style={{ color: 'rgba(100,100,150,0.7)' }}>
-                      {client
-                        ? `Connected · ${client.software} ${client.version}`
-                        : supported
-                          ? `Copy script → paste in ${consoleTip}`
-                          : `v${sw.version}`
-                      }
-                    </div>
+                        <button
+                          onClick={handleManualImport}
+                          disabled={isImporting}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all"
+                          style={{ background: `${color}20`, border: `1px solid ${color}40`, color }}>
+                          {isImporting
+                            ? <span className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" />
+                            : <ImportIcon />
+                          }
+                          {isImporting ? 'Importing…' : 'Import Nodes'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-[10px] mt-0.5" style={{ color: 'rgba(100,100,150,0.6)' }}>v{sw.version}</div>
+                    )}
                   </div>
 
-                  {/* Action */}
-                  {supported ? (
-                    <button
-                      disabled={copying === sw.id}
-                      onClick={() => handleCopyScript(sw.id, sw.displayName)}
-                      className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
-                      style={{ background: `${color}18`, border: `1px solid ${color}35`, color }}
-                    >
-                      {copying === sw.id ? <CheckCopyIcon /> : <CopyScriptIcon />}
-                      {copying === sw.id ? 'Copied!' : 'Copy Script'}
-                    </button>
-                  ) : (
+                  {!supported && (
                     <span className="text-[9px] px-2 py-1 rounded-lg flex-shrink-0"
                           style={{ background: 'rgba(14,14,34,0.8)', color: 'rgba(60,60,100,0.6)', border: '1px solid rgba(24,24,58,0.5)' }}>
                       coming soon

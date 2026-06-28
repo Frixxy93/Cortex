@@ -198,6 +198,39 @@ pub async fn bridge_get_script(
         .ok_or_else(|| CortexError::Io(format!("No bridge script available for {}", sw.display_name)))
 }
 
+/// Write the bridge script to Documents\cortex-bridge\ and return the exec one-liner.
+#[tauri::command]
+pub async fn bridge_get_exec_cmd(
+    _state: State<'_, AppState>,
+    software_id: String,
+) -> Result<String, CortexError> {
+    use crate::engines::bridge::dirs_home;
+
+    let detected = detect_all_software();
+    let sw = detected.into_iter().find(|s| s.id == software_id)
+        .ok_or_else(|| CortexError::Io(format!("Software not found: {software_id}")))?;
+
+    let content = bridge_plugin_content(&sw)
+        .ok_or_else(|| CortexError::Io("No script for this software".to_string()))?;
+
+    let home = dirs_home()
+        .ok_or_else(|| CortexError::Io("Cannot resolve home directory".to_string()))?;
+
+    let script_dir = home.join("Documents").join("cortex-bridge");
+    std::fs::create_dir_all(&script_dir)
+        .map_err(|e| CortexError::Io(format!("mkdir failed: {e}")))?;
+
+    let name = sw.kind.display_name().to_lowercase().replace(' ', "_");
+    let filename = format!("cortex_bridge_{name}.py");
+    let path = script_dir.join(&filename);
+    std::fs::write(&path, content)
+        .map_err(|e| CortexError::Io(format!("Write failed: {e}")))?;
+
+    // Forward slashes work on Windows in Python's open()
+    let path_str = path.to_string_lossy().replace('\\', "/");
+    Ok(format!("exec(open(r\"{path_str}\").read())"))
+}
+
 // ── Auto-bridge install commands ─────────────────────────────────────────────
 
 #[tauri::command]

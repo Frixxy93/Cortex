@@ -580,7 +580,7 @@ fn auto_bridge_paths(sw: &DetectedSoftware) -> Option<(PathBuf, Option<PathBuf>)
 }
 
 /// Return the Python content for this software's bridge plugin.
-fn bridge_plugin_content(sw: &DetectedSoftware) -> Option<&'static str> {
+pub fn bridge_plugin_content(sw: &DetectedSoftware) -> Option<&'static str> {
     match sw.kind {
         SoftwareKind::Houdini => Some(include_str!("../../../bridge-plugins/cortex_bridge_houdini.py")),
         SoftwareKind::Blender => Some(include_str!("../../../bridge-plugins/cortex_bridge_blender.py")),
@@ -683,13 +683,13 @@ fn strip_cortex_block(content: &str) -> String {
 }
 
 #[cfg(target_os = "windows")]
-fn dirs_home() -> Option<PathBuf> {
+pub fn dirs_home() -> Option<PathBuf> {
     std::env::var("USERPROFILE").ok().map(PathBuf::from)
         .or_else(|| std::env::var("HOMEDRIVE").ok().and_then(|d|
             std::env::var("HOMEPATH").ok().map(|p| PathBuf::from(d + &p))
         ))
 }
 #[cfg(not(target_os = "windows"))]
-fn dirs_home() -> Option<PathBuf> {
+pub fn dirs_home() -> Option<PathBuf> {
     std::env::var("HOME").ok().map(PathBuf::from)
 }
