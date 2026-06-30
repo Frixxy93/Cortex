@@ -44,7 +44,7 @@ export function OnboardingFlow({ onDone }: Props) {
   // vault creation state
   const [vaultName,     setVaultName]     = useState('')
   const [vaultColor,    setVaultColor]    = useState(VAULT_COLORS[0])
-  const [vaultDesc,     setVaultDesc]     = useState('')
+  const [vaultDesc]                       = useState('')
   const [vaultSoftware, setVaultSoftware] = useState('')
   const [creating,      setCreating]      = useState(false)
   const [vaultError,    setVaultError]    = useState('')
@@ -99,7 +99,6 @@ export function OnboardingFlow({ onDone }: Props) {
   }
 
   const slideIn  = direction === 'forward' ? 'onb-slide-in-r'  : 'onb-slide-in-l'
-  const slideOut = direction === 'forward' ? 'onb-slide-out-l' : 'onb-slide-out-r'
 
   return (
     <div className="fixed inset-0 z-[900] flex items-center justify-center" style={{ background: 'rgba(2,2,10,0.92)', backdropFilter: 'blur(16px)', animation: exiting ? 'onb-fade-out 0.4s ease forwards' : 'onb-fade-in 0.35s ease forwards' }}>
@@ -126,7 +125,6 @@ export function OnboardingFlow({ onDone }: Props) {
             {STEPS.map((s, i) => {
               const done   = i < stepIdx
               const active = i === stepIdx
-              const future = i > stepIdx
               return (
                 <div key={s.id} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ background: active ? `${s.color}12` : 'transparent', border: active ? `1px solid ${s.color}25` : '1px solid transparent', transition: 'all 0.3s ease' }}>
                   <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[9px] font-bold transition-all" style={{ background: done ? s.color : active ? `${s.color}22` : 'rgba(24,24,58,0.7)', border: done ? 'none' : `1.5px solid ${active ? s.color : 'rgba(40,40,80,0.8)'}`, color: done ? 'white' : active ? s.color : 'rgba(80,80,120,0.7)' }}>
@@ -185,7 +183,7 @@ export function OnboardingFlow({ onDone }: Props) {
             {/* ── Vault ─────────────────────────────────── */}
             {step.id === 'vault' && (
               <div className="flex flex-col flex-1 px-10 py-9">
-                <VaultIllustration color={step.color} vaultName={vaultName || 'My Vault'} vaultColor={vaultColor} />
+                <VaultIllustration vaultName={vaultName || 'My Vault'} vaultColor={vaultColor} />
                 <h2 className="text-[20px] font-bold mb-1.5 mt-6" style={{ color: 'rgba(234,234,248,0.95)', letterSpacing: '-0.02em' }}>Create your first vault</h2>
                 <p className="text-[12px] mb-6" style={{ color: 'rgba(140,140,190,0.7)' }}>A vault holds your entire node library, graphs, and pipeline knowledge.</p>
 
@@ -364,7 +362,7 @@ function WelcomeIllustration({ color }: { color: string }) {
   )
 }
 
-function VaultIllustration({ color, vaultName, vaultColor }: { color: string; vaultName: string; vaultColor: string }) {
+function VaultIllustration({ vaultName, vaultColor }: { vaultName: string; vaultColor: string }) {
   return (
     <div className="flex items-center justify-center pt-2">
       <div className="flex items-center gap-3 px-5 py-3 rounded-2xl" style={{ background: 'rgba(14,14,34,0.8)', border: `1px solid ${vaultColor}40`, boxShadow: `0 0 32px ${vaultColor}18` }}>

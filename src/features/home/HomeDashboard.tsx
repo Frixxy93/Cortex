@@ -273,7 +273,7 @@ function RecentGraphRow({ graph, active, onClick }: {
 
 /* ── Main dashboard ────────────────────────────────────── */
 export function HomeDashboard() {
-  const { vaults, setActiveVault, activeVaultId, isLoading: vaultsLoading, deleteVault } = useVaultStore()
+  const { vaults, setActiveVault, isLoading: vaultsLoading, deleteVault } = useVaultStore()
   const { graphs, byVault, setActiveGraph, activeGraphId } = useGraphStore()
   const getVaultNodes = useNodeStore(s => s.getVaultNodes)
   const { setActiveNav, openCommandPalette } = useUiStore()
@@ -541,7 +541,6 @@ function QAGraphIcon()     { return <svg width="13" height="13" viewBox="0 0 13 
 function QANodesIcon()     { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 1 L11 3.5 L11 8.5 L6.5 11 L2 8.5 L2 3.5 Z"/></svg> }
 function QASearchIcon()    { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="5.5" cy="5.5" r="4"/><line x1="8.5" y1="8.5" x2="12" y2="12"/></svg> }
 function QAAnalyticsIcon() { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 10 L4 6.5 L7 8.5 L11 3"/><circle cx="11" cy="3" r="1" fill="currentColor" stroke="none"/></svg> }
-function QABridgeIcon()    { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 1.5 L6.5 9"/><path d="M4 7 L6.5 9.5 L9 7"/><path d="M1.5 11 H11.5"/></svg> }
 function QAAiIcon()        { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 2h4M6.5 2v2M3 4.5h7l1 6H2l1-6zM5 7.5h3M6.5 7.5V9"/></svg> }
 
 function XIcon() {

@@ -450,12 +450,6 @@ function AiPanel() {
 }
 
 /* ── Coming Soon ────────────────────────────────────────────── */
-const COMING_SOON_ICONS: Record<string, React.ReactNode> = {
-  recipes:   <RecipesCS />,
-  media:     <MediaCS />,
-  bookmarks: <BookmarkCS />,
-  trash:     <TrashCS />,
-}
 
 
 /* ── Feature-preview panels ─────────────────────────────── */
@@ -627,21 +621,6 @@ function DeleteIcon() {
       <path d="M1.5 2.5h9M4 2.5V1.5h4v1M3 2.5l.5 8h5l.5-8"/>
     </svg>
   )
-}
-function RecipesCS() {
-  return <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="2" width="14" height="16" rx="2"/><line x1="7" y1="6" x2="13" y2="6"/><line x1="7" y1="9" x2="13" y2="9"/><line x1="7" y1="12" x2="10" y2="12"/></svg>
-}
-function MediaCS() {
-  return <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="16" height="10" rx="2"/><path d="M8 8 L13 10 L8 12 Z" fill="currentColor" stroke="none" opacity="0.5"/></svg>
-}
-function BookmarkCS() {
-  return <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 2 H15 V18 L10 14 L5 18 Z"/></svg>
-}
-function TrashCS() {
-  return <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5h14"/><path d="M8 5V3h4v2"/><rect x="4" y="5" width="12" height="12" rx="1.5"/><line x1="8" y1="9" x2="8" y2="13"/><line x1="12" y1="9" x2="12" y2="13"/></svg>
-}
-function DefaultCS() {
-  return <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><circle cx="10" cy="10" r="7"/><path d="M10 7v4M10 13.5v.5" strokeWidth="1.8"/></svg>
 }
 
 /* ── Trash Panel ─────────────────────────────────────────── */

@@ -6,7 +6,7 @@ import { useAdminStore } from '@/stores/admin.store'
 import { CortexLogo } from '@/components/ui/CortexLogo'
 import { cn } from '@/utils/cn'
 import { useSettingsStore } from '@/stores/settings.store'
-import { OS, getModKey, isMac, isWindows } from '@/utils/platform'
+import { getModKey, isWindows } from '@/utils/platform'
 
 const appWindow = getCurrentWindow()
 
