@@ -32,6 +32,9 @@ interface UiStore {
 
   addToast: (title: string, opts?: { description?: string; variant?: ToastVariant; duration?: number }) => void
   removeToast: (id: string) => void
+
+  recentCommandIds: string[]
+  addRecentCommand: (id: string) => void
 }
 
 export const useUiStore = create<UiStore>((set, get) => ({
@@ -44,6 +47,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   toasts: [],
   activeTagFilter: null,
   bookmarks: [],
+  recentCommandIds: [],
 
   toggleLeftPanel: () => set(s => ({ leftPanelOpen: !s.leftPanelOpen })),
   toggleRightPanel: () => set(s => ({ rightPanelOpen: !s.rightPanelOpen })),
@@ -76,4 +80,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   })),
   isBookmarked: (nodeId) => get().bookmarks.includes(nodeId),
   removeToast: (id) => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })),
+  addRecentCommand: (id) => set(s => ({
+    recentCommandIds: [id, ...s.recentCommandIds.filter(x => x !== id)].slice(0, 6),
+  })),
 }))

@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useNodeStore } from '@/stores/node.store'
+import { NodeService } from '@/services/node.service'
 import { useUiStore } from '@/stores/ui.store'
 import { useAdminStore } from '@/stores/admin.store'
 
 export function NodeBulkActions() {
-  const { getAllNodes, deleteNode } = useNodeStore()
+  const { getAllNodes, clearAll: clearAllLocal } = useNodeStore()
   const { addToast } = useUiStore()
   const { isAdmin } = useAdminStore()
   const [confirmClear, setConfirmClear] = useState(false)
@@ -14,17 +15,30 @@ export function NodeBulkActions() {
 
   const handleClearAll = async () => {
     setDeleting(true)
-    let count = 0
-    for (const node of nodes) {
-      await deleteNode(node.id)
-      count++
+    try {
+      const count = await NodeService.clearAll()
+      clearAllLocal?.()
+      addToast(`Removed ${count.toLocaleString()} nodes`, { variant: 'default' })
+    } catch (e) {
+      addToast(`Clear failed: ${String(e)}`, { variant: 'error' })
+    } finally {
+      setDeleting(false)
+      setConfirmClear(false)
     }
-    setDeleting(false)
-    setConfirmClear(false)
-    addToast(`Removed ${count} nodes`, { variant: 'default' })
   }
 
-  if (nodes.length === 0 || !isAdmin) return null
+  if (nodes.length === 0) return null
+  if (!isAdmin) return (
+    <div className="px-3 py-2.5 border-t border-cx-border">
+      <div className="flex items-center gap-1.5 text-[10px] text-cx-text-muted">
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="4.5" width="7" height="5" rx="1"/>
+          <path d="M3.5 4.5V3a2 2 0 0 1 4 0v1.5"/>
+        </svg>
+        Bulk actions require admin access
+      </div>
+    </div>
+  )
 
   return (
     <div className="p-3 border-t border-cx-border">

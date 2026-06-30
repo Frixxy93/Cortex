@@ -9,6 +9,13 @@ function call<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   return invoke<T>(cmd, args)
 }
 
+export interface ImportResult {
+  nodesImported: number
+  edgesImported: number
+  parametersImported: number
+  warnings: string[]
+}
+
 export const BridgeService = {
   port:    ()             => call<number>('bridge_start'),
   stop:    ()             => call<void>('bridge_stop'),
@@ -16,6 +23,7 @@ export const BridgeService = {
   detect:  ()             => call<DetectedSoftware[]>('bridge_detect'),
   execCmd: (kind: string) => call<string>('bridge_exec_cmd', { kind }),
 
+  importFile: (path: string) => call<ImportResult>('import_file', { path }),
   onImported: (cb: (e: VfxImportedEvent) => void) =>
     listen<VfxImportedEvent>('vfx:imported', e => cb(e.payload)),
 }

@@ -20,7 +20,7 @@ impl NodeEngine {
                     description, version, color, icon, tags, inputs, outputs, parameters,
                     documentation, notes, production_tips, media_ids, is_deprecated,
                     deprecated_by, metadata, created_at, updated_at
-             FROM nodes WHERE vault_id = ?1 ORDER BY display_name ASC"
+             FROM nodes WHERE vault_id = ?1 AND deleted_at IS NULL ORDER BY display_name ASC"
         )?;
         let nodes = stmt.query_map([vault_id.to_string()], |row| Self::row_to_node(row))?
             .collect::<Result<Vec<_>, _>>()?;
@@ -34,7 +34,7 @@ impl NodeEngine {
                     description, version, color, icon, tags, inputs, outputs, parameters,
                     documentation, notes, production_tips, media_ids, is_deprecated,
                     deprecated_by, metadata, created_at, updated_at
-             FROM nodes ORDER BY display_name ASC"
+             FROM nodes WHERE deleted_at IS NULL ORDER BY display_name ASC"
         )?;
         let nodes = stmt.query_map([], |row| Self::row_to_node(row))?
             .collect::<Result<Vec<_>, _>>()?;
@@ -276,6 +276,42 @@ impl NodeEngine {
         Ok(())
     }
 
+    pub fn soft_delete_node(&self, id: Uuid) -> CortexResult<()> {
+        let conn = self.pool.get().map_err(|e| CortexError::Database(e.to_string()))?;
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute("UPDATE nodes SET deleted_at = ?1 WHERE id = ?2", rusqlite::params![now, id.to_string()])?;
+        Ok(())
+    }
+
+    pub fn restore_node(&self, id: Uuid) -> CortexResult<()> {
+        let conn = self.pool.get().map_err(|e| CortexError::Database(e.to_string()))?;
+        conn.execute("UPDATE nodes SET deleted_at = NULL WHERE id = ?1", [id.to_string()])?;
+        Ok(())
+    }
+
+    pub fn list_trashed_nodes(&self, vault_id: Uuid) -> CortexResult<Vec<Node>> {
+        let conn = self.pool.get().map_err(|e| CortexError::Database(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, vault_id, software_id, name, display_name, category, object_type,
+                    description, version, color, icon, tags, inputs, outputs, parameters,
+                    documentation, notes, production_tips, media_ids, is_deprecated,
+                    deprecated_by, metadata, created_at, updated_at
+             FROM nodes WHERE vault_id = ?1 AND deleted_at IS NOT NULL ORDER BY deleted_at DESC"
+        )?;
+        let nodes = stmt.query_map([vault_id.to_string()], |row| Self::row_to_node(row))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(nodes)
+    }
+
+    pub fn empty_trash(&self, vault_id: Uuid) -> CortexResult<usize> {
+        let conn = self.pool.get().map_err(|e| CortexError::Database(e.to_string()))?;
+        let deleted = conn.execute(
+            "DELETE FROM nodes WHERE vault_id = ?1 AND deleted_at IS NOT NULL",
+            [vault_id.to_string()]
+        )?;
+        Ok(deleted)
+    }
+
     pub fn clear_vault_nodes(&self, vault_id: Uuid) -> CortexResult<usize> {
         let conn = self.pool.get().map_err(|e| CortexError::Database(e.to_string()))?;
         let deleted = conn.execute("DELETE FROM nodes WHERE vault_id = ?1", [vault_id.to_string()])?;
@@ -299,10 +335,8 @@ impl NodeEngine {
         Ok(deleted)
     }
 
-    /// Read every node from the DB and write them as SQL INSERT statements to
-    /// `{project_root}/src-tauri/src/data/nodes_seed.sql`.
-    /// After running this command, rebuild CORTEX — all users will get these nodes on install.
-    pub fn generate_seed_sql(&self) -> CortexResult<usize> {
+    /// Read every node from the DB and write them as SQL INSERT statements to `out`.
+    pub fn generate_seed_sql_to(&self, out: &std::path::Path) -> CortexResult<String> {
         let nodes = self.list_all_nodes()?;
         let count = nodes.len();
 
@@ -344,15 +378,11 @@ impl NodeEngine {
             sql.push_str(&row);
         }
 
-        // Write to project data directory (compile-time path)
-        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src").join("data").join("nodes_seed.sql");
-
-        std::fs::write(&out, &sql)
+        std::fs::write(out, &sql)
             .map_err(|e| CortexError::Io(format!("Cannot write seed: {e} → {}", out.display())))?;
 
         tracing::info!("Seed written: {count} nodes → {}", out.display());
-        Ok(count)
+        Ok(out.to_string_lossy().into_owned())
     }
 
     fn row_to_node(row: &rusqlite::Row) -> rusqlite::Result<Node> {

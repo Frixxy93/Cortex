@@ -1,4 +1,3 @@
-import { } from 'react'
 import { useVaultStore } from '@/stores/vault.store'
 import { useNodeStore } from '@/stores/node.store'
 import { useGraphStore } from '@/stores/graph.store'
@@ -39,7 +38,7 @@ export function AnalyticsDashboard() {
   const tagCount: Record<string, number> = {}
   for (const n of nodes) for (const t of n.tags) tagCount[t] = (tagCount[t] ?? 0) + 1
   const topTags = Object.entries(tagCount)
-    .filter(([t]) => t !== 'houdini')
+    .filter(([t]) => t.trim().length > 0)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 12)
 

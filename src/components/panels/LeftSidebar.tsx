@@ -3,24 +3,44 @@ import { useVaultStore } from '@/stores/vault.store'
 import { useNodeStore } from '@/stores/node.store'
 import { useUiStore } from '@/stores/ui.store'
 import { useAdminStore } from '@/stores/admin.store'
+import { useGraphStore } from '@/stores/graph.store'
 import { cn } from '@/utils/cn'
 import { SOFTWARE_COLORS } from '@/utils/constants'
 
 type NavId = 'home' | 'graph' | 'nodes' | 'search' | 'analytics' | 'import' | 'ai' | 'recipes' | 'templates' | 'media' | 'bookmarks' | 'trash'
 
-const NAV_ITEMS: { id: NavId; label: string; icon: React.ReactNode }[] = [
-  { id: 'home',      label: 'Home',      icon: <HomeIcon /> },
-  { id: 'graph',     label: 'Graph',     icon: <GraphIcon /> },
-  { id: 'nodes',     label: 'Nodes',     icon: <NodesIcon /> },
-  { id: 'search',    label: 'Search',    icon: <SearchNavIcon /> },
-  { id: 'analytics', label: 'Analytics', icon: <AnalyticsIcon /> },
-  { id: 'import',    label: 'Import',    icon: <ImportIcon /> },
-  { id: 'ai',        label: 'AI',        icon: <AiIcon /> },
-  { id: 'recipes',   label: 'Recipes',   icon: <RecipesIcon /> },
-  { id: 'templates', label: 'Templates', icon: <TemplatesIcon /> },
-  { id: 'media',     label: 'Media',     icon: <MediaIcon /> },
-  { id: 'bookmarks', label: 'Bookmarks', icon: <BookmarkIcon /> },
-  { id: 'trash',     label: 'Trash',     icon: <TrashIcon /> },
+interface NavDef { id: NavId; label: string; color: string; shortcut?: string; icon: React.ReactNode; soon?: boolean }
+
+const NAV_GROUPS: { id: string; label?: string; items: NavDef[] }[] = [
+  {
+    id: 'core',
+    items: [
+      { id: 'home',   label: 'Home',   color: '#7b6fff', icon: <HomeIcon /> },
+      { id: 'graph',  label: 'Graph',  color: '#60a5fa', shortcut: 'G', icon: <GraphIcon /> },
+      { id: 'nodes',  label: 'Nodes',  color: '#a78bfa', shortcut: 'N', icon: <NodesIcon /> },
+      { id: 'search', label: 'Search', color: '#34d399', shortcut: '/', icon: <SearchNavIcon /> },
+    ],
+  },
+  {
+    id: 'library',
+    label: 'Library',
+    items: [
+      { id: 'analytics', label: 'Analytics', color: '#f59e0b', icon: <AnalyticsIcon /> },
+      { id: 'recipes',   label: 'Recipes',   color: '#f472b6', icon: <RecipesIcon />,   soon: true },
+      { id: 'templates', label: 'Templates', color: '#818cf8', icon: <TemplatesIcon /> },
+      { id: 'media',     label: 'Media',     color: '#4ade80', icon: <MediaIcon />,     soon: true },
+      { id: 'bookmarks', label: 'Bookmarks', color: '#facc15', icon: <BookmarkIcon />, soon: true },
+    ],
+  },
+  {
+    id: 'tools',
+    label: 'Tools',
+    items: [
+      { id: 'ai',     label: 'AI',     color: '#22d3ee', icon: <AiIcon /> },
+      { id: 'import', label: 'Bridge', color: '#fb923c', icon: <ImportIcon /> },
+      { id: 'trash',  label: 'Trash',  color: '#f87171', icon: <TrashIcon />,  soon: true },
+    ],
+  },
 ]
 
 const TAG_COLORS = ['#4FC3F7','#EF9A9A','#FF6B35','#FFE082','#CE93D8','#80CBC4','#A5D6A7','#FFAB91']
@@ -38,12 +58,13 @@ export function LeftSidebar({ onOpenSettings, onOpenBridge, onOpenShortcuts }: {
   const getVaultNodes = useNodeStore(s => s.getVaultNodes)
   const { openCommandPalette, toggleNav, setActiveNav, activeNavId, addToast, setTagFilter, activeTagFilter } = useUiStore()
   const { isAdmin } = useAdminStore()
+  const byVault = useGraphStore(s => s.byVault)
 
   const [vaultsExpanded, setVaultsExpanded] = useState(true)
-  const [tagsExpanded, setTagsExpanded] = useState(true)
+  const [tagsExpanded,   setTagsExpanded]   = useState(true)
   const [confirmVaultId, setConfirmVaultId] = useState<string | null>(null)
   const [editingVaultId, setEditingVaultId] = useState<string | null>(null)
-  const [editVaultName, setEditVaultName] = useState('')
+  const [editVaultName,  setEditVaultName]  = useState('')
 
   const startVaultRename = (id: string, name: string) => { setEditingVaultId(id); setEditVaultName(name) }
   const commitVaultRename = async () => {
@@ -55,6 +76,20 @@ export function LeftSidebar({ onOpenSettings, onOpenBridge, onOpenShortcuts }: {
 
   const NAV_PANEL_IDS = new Set(['home','graph','nodes','search','analytics','import','ai','recipes','templates','media','bookmarks','trash'])
 
+  const graphCount = activeVaultId ? (byVault[activeVaultId]?.length ?? 0) : 0
+  const nodeCount  = activeVaultId ? getVaultNodes(activeVaultId).length : 0
+
+  const getBadge = (id: NavId): number | undefined => {
+    if (id === 'graph') return graphCount > 0 ? graphCount : undefined
+    if (id === 'nodes') return nodeCount  > 0 ? nodeCount  : undefined
+    return undefined
+  }
+
+  const handleNavClick = (id: NavId) => {
+    if (id === 'home') setActiveNav('home')
+    else if (NAV_PANEL_IDS.has(id)) toggleNav(id as any)
+  }
+
   return (
     <div
       className="w-[192px] flex-shrink-0 flex flex-col h-full overflow-hidden relative"
@@ -64,46 +99,58 @@ export function LeftSidebar({ onOpenSettings, onOpenBridge, onOpenShortcuts }: {
         boxShadow: '1px 0 0 rgba(255,255,255,0.02), 4px 0 24px rgba(0,0,0,0.2)',
       }}
     >
-      {/* Subtle top glow */}
-      <div className="absolute top-0 left-0 right-0 h-32 pointer-events-none"
-           style={{ background: 'radial-gradient(ellipse at 30% 0%, rgba(123,111,255,0.06) 0%, transparent 70%)' }} />
+      {/* Ambient top glow */}
+      <div className="absolute top-0 left-0 right-0 h-40 pointer-events-none"
+           style={{ background: 'radial-gradient(ellipse at 40% 0%, rgba(123,111,255,0.07) 0%, transparent 70%)' }} />
 
       {/* + New button */}
-      <div className="px-3 pt-3 pb-2.5 flex-shrink-0 relative">
+      <div className="px-3 pt-3 pb-2 flex-shrink-0 relative">
         <button
           onClick={openCommandPalette}
-          className="w-full flex items-center gap-2 px-3.5 py-2 rounded-xl text-[12px] font-semibold
+          className="w-full flex items-center gap-2 px-3.5 py-[9px] rounded-xl text-[12px] font-semibold
                      text-white transition-all duration-200 active:scale-[0.98]"
           style={{
             background: 'linear-gradient(135deg, #7b6fff 0%, #6058dd 100%)',
-            boxShadow: '0 2px 12px rgba(123,111,255,0.3), 0 0 0 1px rgba(123,111,255,0.2), inset 0 1px 0 rgba(255,255,255,0.1)',
+            boxShadow: '0 2px 14px rgba(123,111,255,0.28), 0 0 0 1px rgba(123,111,255,0.18), inset 0 1px 0 rgba(255,255,255,0.12)',
           }}
         >
-          <span className="text-[16px] leading-none font-light">+</span>
+          <span className="w-4 h-4 rounded-md bg-white/15 flex items-center justify-center text-[13px] leading-none font-light flex-shrink-0">+</span>
           <span>New</span>
-          <span className="ml-auto text-[9px] text-white/50 font-mono">⌘K</span>
+          <span className="ml-auto text-[9px] text-white/45 font-mono">⌘K</span>
         </button>
       </div>
 
-      {/* Nav items */}
-      <nav className="px-2 flex-shrink-0 space-y-0.5">
-        {NAV_ITEMS.map(item => (
-          <NavItem
-            key={item.id}
-            active={activeNavId === item.id}
-            onClick={() => {
-              if (item.id === 'home') setActiveNav('home')
-              else if (NAV_PANEL_IDS.has(item.id)) toggleNav(item.id as any)
-            }}
-            icon={item.icon}
-          >
-            {item.label}
-          </NavItem>
+      {/* Nav groups */}
+      <nav className="px-2 pb-1 flex-shrink-0">
+        {NAV_GROUPS.map((group, gi) => (
+          <div key={group.id}>
+            {gi > 0 && (
+              <div className="mx-1 my-2" style={{ height: '1px', background: 'linear-gradient(90deg, transparent, rgba(24,24,58,0.9) 20%, rgba(24,24,58,0.9) 80%, transparent)' }} />
+            )}
+            {group.label && (
+              <div className="px-2.5 mb-1 mt-0.5">
+                <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(234,234,248,0.2)' }}>
+                  {group.label}
+                </span>
+              </div>
+            )}
+            <div className="space-y-0.5">
+              {group.items.map(def => (
+                <NavItem
+                  key={def.id}
+                  def={def}
+                  active={activeNavId === def.id}
+                  onClick={() => handleNavClick(def.id)}
+                  badge={getBadge(def.id)}
+                />
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
 
       {/* Divider */}
-      <div className="mx-3 my-2.5 flex-shrink-0" style={{ height: '1px', background: 'linear-gradient(90deg, transparent, rgba(24,24,58,0.8) 30%, rgba(24,24,58,0.8) 70%, transparent)' }} />
+      <div className="mx-3 my-2 flex-shrink-0" style={{ height: '1px', background: 'linear-gradient(90deg, transparent, rgba(24,24,58,0.8) 30%, rgba(24,24,58,0.8) 70%, transparent)' }} />
 
       {/* Scrollable lower section */}
       <div className="flex-1 overflow-y-auto px-2 pb-2 min-h-0">
@@ -117,6 +164,8 @@ export function LeftSidebar({ onOpenSettings, onOpenBridge, onOpenShortcuts }: {
               const color = sw ? SOFTWARE_COLORS[sw] ?? '#7b6fff' : vault.color ?? '#7b6fff'
               const meta = sw ? SOFTWARE_META[sw] : null
               const isActive = vault.id === activeVaultId
+              const vGraphs = byVault[vault.id]?.length ?? 0
+              const vNodes  = getVaultNodes(vault.id).length
 
               return (
                 <div
@@ -143,17 +192,27 @@ export function LeftSidebar({ onOpenSettings, onOpenBridge, onOpenShortcuts }: {
                     <button
                       onClick={() => setActiveVault(vault.id)}
                       onDoubleClick={() => startVaultRename(vault.id, vault.name)}
-                      className="flex items-center gap-2.5 px-2 py-1.5 flex-1 min-w-0 text-left text-[12px]"
+                      className="flex items-center gap-2.5 px-2 py-1.5 flex-1 min-w-0 text-left"
                     >
                       <span
-                        className="w-5 h-5 rounded-md flex items-center justify-center text-[9px] font-bold flex-shrink-0"
-                        style={{ backgroundColor: color + '28', color, border: `1px solid ${color}40`, boxShadow: isActive ? `0 0 6px ${color}30` : 'none' }}
+                        className="w-5 h-5 rounded-md flex items-center justify-center text-[9px] font-bold flex-shrink-0 transition-all duration-150"
+                        style={{
+                          backgroundColor: color + '28',
+                          color,
+                          border: `1px solid ${color}40`,
+                          boxShadow: isActive ? `0 0 8px ${color}30` : 'none',
+                        }}
                       >
                         {vault.icon ?? meta?.short ?? vault.name[0].toUpperCase()}
                       </span>
-                      <span className={cn('truncate flex-1 transition-colors', isActive ? 'text-cx-text' : 'text-cx-text-dim')}>
-                        {vault.name}
-                      </span>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className={cn('text-[12px] truncate transition-colors', isActive ? 'text-cx-text' : 'text-cx-text-dim')}>
+                          {vault.name}
+                        </span>
+                        <span className="text-[9px]" style={{ color: 'rgba(234,234,248,0.22)' }}>
+                          {vGraphs}g &middot; {vNodes}n
+                        </span>
+                      </div>
                       {isActive && (
                         <span className="w-1 h-1 rounded-full flex-shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}` }} />
                       )}
@@ -168,7 +227,7 @@ export function LeftSidebar({ onOpenSettings, onOpenBridge, onOpenShortcuts }: {
                         >Del</button>
                         <button onClick={() => setConfirmVaultId(null)}
                           className="text-[9px] px-1 py-0.5 rounded text-cx-text-muted hover:bg-cx-elevated"
-                        >✕</button>
+                        >&#x2715;</button>
                       </div>
                     ) : (
                       <button
@@ -254,8 +313,7 @@ export function LeftSidebar({ onOpenSettings, onOpenBridge, onOpenShortcuts }: {
               </svg>
             </button>
           )}
-          <button onClick={onOpenShortcuts} title="Keyboard shortcuts (?)
-"
+          <button onClick={onOpenShortcuts} title="Keyboard shortcuts (?)"
             className="w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-150
                        text-cx-text-muted hover:text-cx-text hover:bg-cx-elevated/80 flex-shrink-0">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -280,37 +338,98 @@ export function LeftSidebar({ onOpenSettings, onOpenBridge, onOpenShortcuts }: {
   )
 }
 
-/* ── Sub-components ──────────────────────────────────────── */
+/* ── NavItem ──────────────────────────────────────────────── */
 
-function NavItem({ active, onClick, icon, children }: {
-  active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode
+function NavItem({ def, active, onClick, badge }: {
+  def: NavDef
+  active: boolean
+  onClick: () => void
+  badge?: number
 }) {
+  if (def.soon) return (
+    <div
+      className="relative w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg text-left text-[12px] cursor-default"
+      style={{ color: 'rgba(234,234,248,0.18)' }}
+      title={`${def.label} — coming soon`}
+    >
+      <span className="flex-shrink-0" style={{ color: def.color + '35' }}>{def.icon}</span>
+      <span className="flex-1 truncate">{def.label}</span>
+      <span className="text-[8px] font-semibold px-1.5 py-0.5 rounded-full leading-none flex-shrink-0"
+            style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(234,234,248,0.22)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        soon
+      </span>
+    </div>
+  )
+  const [hovered, setHovered] = useState(false)
+  const c = def.color
+
+  const iconColor = active ? c : hovered ? (c + 'bb') : 'rgba(234,234,248,0.28)'
+  const textColor = active ? 'rgba(234,234,248,0.95)' : hovered ? 'rgba(234,234,248,0.7)' : 'rgba(234,234,248,0.4)'
+
+  const bgStyle: React.CSSProperties = active
+    ? { background: `linear-gradient(90deg, ${c}18 0%, ${c}06 100%)`, boxShadow: `inset 0 0 0 1px ${c}14` }
+    : hovered
+    ? { background: `${c}0a` }
+    : {}
+
   return (
     <button
       onClick={onClick}
-      className={cn(
-        'relative w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg text-left text-[12px] transition-all duration-150',
-        active
-          ? 'text-cx-accent font-medium'
-          : 'text-cx-text-dim hover:text-cx-text hover:bg-cx-elevated/60'
-      )}
-      style={active ? {
-        background: 'linear-gradient(90deg, rgba(123,111,255,0.12) 0%, rgba(123,111,255,0.04) 100%)',
-        boxShadow: 'inset 0 0 0 1px rgba(123,111,255,0.1)',
-      } : undefined}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="relative w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg text-left text-[12px] transition-all duration-150"
+      style={{ color: textColor, ...bgStyle }}
     >
       {/* Active left accent bar */}
       {active && (
-        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r-full"
-              style={{ background: 'var(--cx-accent)', boxShadow: '0 0 6px rgba(123,111,255,0.7)' }} />
+        <span
+          className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r-full"
+          style={{ background: c, boxShadow: `0 0 8px ${c}cc` }}
+        />
       )}
-      <span className={cn('flex-shrink-0', active ? 'text-cx-accent' : 'text-cx-text-muted')}>
-        {icon}
+
+      {/* Icon */}
+      <span className="flex-shrink-0 transition-colors duration-150" style={{ color: iconColor }}>
+        {def.icon}
       </span>
-      {children}
+
+      {/* Label */}
+      <span className={cn('flex-1 truncate', active && 'font-medium')}>
+        {def.label}
+      </span>
+
+      {/* Shortcut hint on hover */}
+      {def.shortcut && hovered && !active && (
+        <kbd
+          className="text-[9px] font-mono px-1.5 py-0.5 rounded leading-none flex-shrink-0"
+          style={{
+            background: 'rgba(255,255,255,0.05)',
+            border: `1px solid ${c}25`,
+            color: `${c}90`,
+          }}
+        >
+          {def.shortcut}
+        </kbd>
+      )}
+
+      {/* Count badge */}
+      {badge != null && !(hovered && def.shortcut && !active) && (
+        <span
+          className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none flex-shrink-0 transition-all duration-150"
+          style={{
+            background: active ? `${c}22` : 'rgba(255,255,255,0.05)',
+            color: active ? c : 'rgba(234,234,248,0.25)',
+            border: `1px solid ${active ? c + '28' : 'rgba(255,255,255,0.06)'}`,
+          }}
+        >
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </button>
   )
 }
+
+/* ── SectionHeader ───────────────────────────────────────── */
 
 function SectionHeader({ label, expanded, onToggle }: { label: string; expanded: boolean; onToggle: () => void }) {
   return (

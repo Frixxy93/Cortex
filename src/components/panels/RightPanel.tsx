@@ -1,4 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, KeyboardEvent } from 'react'
+import { RelationshipService } from '@/services/relationship.service'
+import { useVaultStore } from '@/stores/vault.store'
+import { RELATIONSHIP_LABELS } from '@/types'
+import type { Relationship, RelationshipType } from '@/types'
 import { useNodeStore } from '@/stores/node.store'
 import { useGraphStore } from '@/stores/graph.store'
 import { useUiStore } from '@/stores/ui.store'
@@ -9,7 +13,7 @@ import { cn } from '@/utils/cn'
 import { nanoid } from 'nanoid'
 import type { NodePort, CortexNode, Parameter, GraphNode } from '@/types'
 
-type TabId = 'overview' | 'parameters' | 'inputs' | 'outputs' | 'notes'
+type TabId = 'overview' | 'parameters' | 'inputs' | 'outputs' | 'notes' | 'relations'
 
 export function RightPanel() {
   const [activeTab, setActiveTab] = useState<TabId>('overview')
@@ -21,6 +25,7 @@ export function RightPanel() {
     { id: 'inputs',     label: 'Inputs',  count: selectedNode?.inputs.length },
     { id: 'outputs',    label: 'Outputs', count: selectedNode?.outputs.length },
     { id: 'notes',      label: 'Notes' },
+    { id: 'relations',  label: 'Links' },
   ]
 
   useEffect(() => { setActiveTab('overview') }, [selectedNode?.id])
@@ -67,6 +72,7 @@ export function RightPanel() {
             {activeTab === 'inputs'     && <InputsTab     node={selectedNode} />}
             {activeTab === 'outputs'    && <OutputsTab    node={selectedNode} />}
             {activeTab === 'notes'      && <NotesTab      node={selectedNode} />}
+            {activeTab === 'relations'  && <RelationsTab  node={selectedNode} />}
           </>
         )}
       </div>
@@ -108,9 +114,7 @@ function NodeHeader({ node }: { node: CortexNode }) {
 
   return (
     <div className="flex-shrink-0" style={{ borderBottom: '1px solid rgba(24,24,58,0.7)' }}>
-      {/* Accent top line */}
       <div className="h-0.5" style={{ background: `linear-gradient(90deg, ${accent}cc 0%, ${accent}40 60%, transparent 100%)` }} />
-      {/* Header bg */}
       <div style={{ background: `linear-gradient(160deg, ${accent}10 0%, rgba(9,9,26,0.95) 70%)` }}>
         <div className="px-3.5 pt-3 pb-3">
           <div className="flex items-start gap-2.5 mb-2.5">
@@ -132,7 +136,6 @@ function NodeHeader({ node }: { node: CortexNode }) {
             </div>
           </div>
 
-          {/* Badges */}
           <div className="flex items-center gap-1.5 mb-2.5 flex-wrap">
             <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
                   style={{ background: `${accent}18`, color: accent, border: `1px solid ${accent}35` }}>
@@ -150,7 +153,6 @@ function NodeHeader({ node }: { node: CortexNode }) {
             )}
           </div>
 
-          {/* Actions */}
           <div className="flex items-center gap-1">
             <button onClick={handleAddToCanvas}
               className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg
@@ -212,7 +214,6 @@ function EmptyState() {
   ]
   return (
     <div className="flex flex-col items-center justify-center h-full gap-5 px-4 text-center">
-      {/* Animated hex */}
       <div className="relative" style={{ animation: 'hexDrift 6s ease-in-out infinite', filter: 'drop-shadow(0 0 12px rgba(123,111,255,0.2))' }}>
         <svg viewBox="0 0 64 64" width="56" height="56" fill="none">
           <path d="M32 4 L56 18 L56 46 L32 60 L8 46 L8 18 Z"
@@ -249,98 +250,155 @@ function OverviewTab({ node }: { node: CortexNode }) {
   const { addToast } = useUiStore()
   const accent = node.color ?? CATEGORY_COLORS[node.category] ?? CATEGORY_COLORS.default
 
-  const [name, setName] = useState(node.displayName)
-  const [desc, setDesc] = useState(node.description ?? '')
-  const [cat,  setCat]  = useState(node.category)
-  const [tags, setTags] = useState(node.tags.join(', '))
-  const [tips, setTips] = useState(node.productionTips.join('\n'))
-  const [type, setType] = useState(node.objectType)
+  const [name,      setName]      = useState(node.displayName)
+  const [desc,      setDesc]      = useState(node.description ?? '')
+  const [cat,       setCat]       = useState(node.category)
+  const [tags,      setTags]      = useState<string[]>(node.tags)
+  const [tips,      setTips]      = useState(node.productionTips.join('\n'))
+  const [type,      setType]      = useState(node.objectType)
+  const [editName,  setEditName]  = useState(false)
+  const [savedField, setSavedField] = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    setName(node.displayName); setDesc(node.description ?? '')
-    setCat(node.category); setTags(node.tags.join(', '))
-    setTips(node.productionTips.join('\n')); setType(node.objectType)
+    setName(node.displayName)
+    setDesc(node.description ?? '')
+    setCat(node.category)
+    setTags(node.tags)
+    setTips(node.productionTips.join('\n'))
+    setType(node.objectType)
+    setEditName(false)
   }, [node.id])
 
-  const save = async (patch: Record<string, unknown>) => {
-    try { await updateNode({ id: node.id, ...patch } as any) }
-    catch { addToast('Save failed', { variant: 'error' }) }
+  useEffect(() => {
+    if (editName) nameRef.current?.focus()
+  }, [editName])
+
+  const flash = (field: string) => {
+    setSavedField(field)
+    setTimeout(() => setSavedField(null), 1200)
+  }
+
+  const save = async (patch: Record<string, unknown>, field: string) => {
+    try {
+      await updateNode({ id: node.id, ...patch } as any)
+      flash(field)
+    } catch {
+      addToast('Save failed', { variant: 'error' })
+    }
   }
 
   const categories = Object.keys(CATEGORY_COLORS).filter(k => k !== 'default')
+  const DESC_MAX = 500
 
   return (
-    <div className="p-3 space-y-3">
-      {/* Description */}
-      <div className="rounded-xl border border-cx-border bg-cx-elevated p-2.5">
-        <label className="text-[9px] font-bold uppercase tracking-widest text-cx-text-muted block mb-1.5">Description</label>
-        <textarea value={desc} onChange={e => setDesc(e.target.value)}
-          onBlur={() => save({ description: desc })}
-          rows={3} placeholder="Add a description…"
-          className="w-full bg-transparent text-[11px] text-cx-text-dim leading-relaxed resize-none
-                     focus:outline-none placeholder:text-cx-text-muted/40" />
-      </div>
-
-      {/* Tags */}
-      {node.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {node.tags.map(t => (
-            <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full"
-                  style={{ background: `${accent}14`, color: `${accent}cc`, border: `1px solid ${accent}28` }}>
-              {t}
-            </span>
-          ))}
+    <div className="p-3 space-y-2.5">
+      {/* Description card */}
+      <FieldCard>
+        <div className="flex items-baseline justify-between mb-1.5">
+          <FieldLabel label="Description" saved={savedField === 'desc'} />
+          <span className="text-[9px]" style={{ color: 'rgba(80,80,130,0.6)' }}>
+            {desc.length}/{DESC_MAX}
+          </span>
         </div>
-      )}
+        <textarea
+          value={desc}
+          onChange={e => setDesc(e.target.value.slice(0, DESC_MAX))}
+          onBlur={() => save({ description: desc }, 'desc')}
+          rows={3}
+          placeholder="Add a description…"
+          className="cx-field w-full bg-transparent text-[11px] text-cx-text-dim leading-relaxed resize-none
+                     focus:outline-none placeholder:text-cx-text-muted/40 rounded"
+        />
+      </FieldCard>
+
+      {/* Tags pills */}
+      <div className="space-y-1.5">
+        <FieldLabel label="Tags" saved={savedField === 'tags'} />
+        <TagEditor
+          tags={tags}
+          accent={accent}
+          onChange={next => {
+            setTags(next)
+            save({ tags: next }, 'tags')
+          }}
+        />
+      </div>
 
       <Divider />
 
-      {/* Name */}
-      <Field label="Display Name">
-        <input value={name} onChange={e => setName(e.target.value)}
-          onBlur={() => save({ displayName: name })}
-          onKeyDown={e => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-          className="w-full bg-cx-elevated border border-cx-border rounded-lg px-2.5 py-1.5
-                     text-[12px] text-cx-text focus:outline-none focus:border-cx-accent transition-colors" />
-      </Field>
+      {/* Display Name — click-to-edit */}
+      <div className="space-y-1.5">
+        <FieldLabel label="Display Name" saved={savedField === 'name'} />
+        {editName ? (
+          <input
+            ref={nameRef}
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onBlur={() => { setEditName(false); save({ displayName: name }, 'name') }}
+            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              if (e.key === 'Escape') { setName(node.displayName); setEditName(false) }
+            }}
+            className="cx-field w-full bg-cx-elevated border border-cx-border rounded-lg px-2.5 py-1.5
+                       text-[12px] text-cx-text focus:outline-none transition-colors"
+          />
+        ) : (
+          <button
+            onClick={() => setEditName(true)}
+            title="Click to edit"
+            className="group w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left
+                       transition-all hover:bg-cx-elevated"
+            style={{ border: '1px solid transparent' }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(24,24,58,0.8)')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'transparent')}>
+            <span className="text-[12px] text-cx-text font-medium truncate">{name}</span>
+            <span className="opacity-0 group-hover:opacity-60 transition-opacity flex-shrink-0 ml-1">
+              <EditPencilIcon />
+            </span>
+          </button>
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <Field label="Category">
-          <select value={cat} onChange={e => { setCat(e.target.value as any); save({ category: e.target.value }) }}
-            className="w-full bg-cx-elevated border border-cx-border rounded-lg px-2 py-1.5
-                       text-[10px] text-cx-text focus:outline-none focus:border-cx-accent transition-colors">
+        <div className="space-y-1.5">
+          <FieldLabel label="Category" saved={savedField === 'cat'} />
+          <select
+            value={cat}
+            onChange={e => { setCat(e.target.value as any); save({ category: e.target.value }, 'cat') }}
+            className="cx-field w-full bg-cx-elevated border border-cx-border rounded-lg px-2 py-1.5
+                       text-[10px] text-cx-text focus:outline-none transition-colors">
             {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-        </Field>
-        <Field label="Type">
-          <select value={type} onChange={e => { setType(e.target.value as any); save({ objectType: e.target.value }) }}
-            className="w-full bg-cx-elevated border border-cx-border rounded-lg px-2 py-1.5
-                       text-[10px] text-cx-text focus:outline-none focus:border-cx-accent transition-colors">
+        </div>
+        <div className="space-y-1.5">
+          <FieldLabel label="Type" saved={savedField === 'type'} />
+          <select
+            value={type}
+            onChange={e => { setType(e.target.value as any); save({ objectType: e.target.value }, 'type') }}
+            className="cx-field w-full bg-cx-elevated border border-cx-border rounded-lg px-2 py-1.5
+                       text-[10px] text-cx-text focus:outline-none transition-colors">
             {OBJECT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
-        </Field>
+        </div>
       </div>
-
-      <Field label="Tags" hint="comma-separated">
-        <input value={tags} onChange={e => setTags(e.target.value)}
-          onBlur={() => save({ tags: tags.split(',').map((t: string) => t.trim()).filter(Boolean) })}
-          placeholder="vdb, pyro, rendering…"
-          className="w-full bg-cx-elevated border border-cx-border rounded-lg px-2.5 py-1.5
-                     text-[11px] text-cx-text focus:outline-none focus:border-cx-accent transition-colors
-                     placeholder:text-cx-text-muted/40" />
-      </Field>
 
       <Divider />
 
-      <Field label="Production Tips" hint="one per line">
-        <textarea value={tips} onChange={e => setTips(e.target.value)}
-          onBlur={() => save({ productionTips: tips.split('\n').map(t => t.trim()).filter(Boolean) })}
-          rows={Math.max(3, tips.split('\n').length + 1)} placeholder="Add tips…"
-          className="w-full bg-cx-elevated border border-cx-border rounded-xl px-2.5 py-2
+      {/* Production Tips */}
+      <div className="space-y-1.5">
+        <FieldLabel label="Production Tips" hint="one per line" saved={savedField === 'tips'} />
+        <textarea
+          value={tips}
+          onChange={e => setTips(e.target.value)}
+          onBlur={() => save({ productionTips: tips.split('\n').map((t: string) => t.trim()).filter(Boolean) }, 'tips')}
+          rows={Math.max(3, tips.split('\n').length + 1)}
+          placeholder="Add tips…"
+          className="cx-field w-full bg-cx-elevated border border-cx-border rounded-xl px-2.5 py-2
                      text-[11px] text-cx-text-dim leading-relaxed resize-none
-                     focus:outline-none focus:border-cx-accent transition-colors
-                     placeholder:text-cx-text-muted/40" />
-      </Field>
+                     focus:outline-none transition-colors placeholder:text-cx-text-muted/40"
+        />
+      </div>
 
       <Divider />
 
@@ -352,6 +410,63 @@ function OverviewTab({ node }: { node: CortexNode }) {
                   value={node.isDeprecated ? '⚠' : '✓'}
                   color={node.isDeprecated ? '#f87171' : '#34D399'} />
       </div>
+    </div>
+  )
+}
+
+/* ── Tag Editor ──────────────────────────────────────────── */
+function TagEditor({ tags, accent, onChange }: { tags: string[]; accent: string; onChange: (tags: string[]) => void }) {
+  const [inputVal, setInputVal] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const addTag = (raw: string) => {
+    const newTags = raw.split(',').map(t => t.trim()).filter(t => t && !tags.includes(t))
+    if (newTags.length) onChange([...tags, ...newTags])
+    setInputVal('')
+  }
+
+  const removeTag = (tag: string) => onChange(tags.filter(t => t !== tag))
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if ((e.key === 'Enter' || e.key === ',') && inputVal.trim()) {
+      e.preventDefault()
+      addTag(inputVal)
+    }
+    if (e.key === 'Backspace' && !inputVal && tags.length) {
+      removeTag(tags[tags.length - 1])
+    }
+  }
+
+  return (
+    <div
+      className="flex flex-wrap gap-1 px-2 py-1.5 rounded-lg cursor-text min-h-[32px]"
+      style={{ background: 'rgba(14,14,34,0.6)', border: '1px solid rgba(24,24,58,0.8)' }}
+      onClick={() => inputRef.current?.focus()}>
+      {tags.map(tag => (
+        <span key={tag} className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full"
+              style={{ background: `${accent}14`, color: `${accent}cc`, border: `1px solid ${accent}28` }}>
+          {tag}
+          <button
+            onClick={e => { e.stopPropagation(); removeTag(tag) }}
+            className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity leading-none"
+            style={{ color: accent }}>
+            <svg width="7" height="7" viewBox="0 0 7 7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M1 1l5 5M6 1L1 6"/>
+            </svg>
+          </button>
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        value={inputVal}
+        onChange={e => setInputVal(e.target.value)}
+        onKeyDown={onKeyDown}
+        onBlur={() => { if (inputVal.trim()) addTag(inputVal) }}
+        placeholder={tags.length === 0 ? 'Add tags…' : ''}
+        className="flex-1 min-w-[60px] bg-transparent text-[10px] text-cx-text focus:outline-none
+                   placeholder:text-cx-text-muted/40"
+        style={{ minHeight: '20px' }}
+      />
     </div>
   )
 }
@@ -379,9 +494,9 @@ function ParametersTab({ node }: { node: CortexNode }) {
             </svg>
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder={`Filter ${node.parameters.length} params…`}
-              className="w-full bg-cx-elevated border border-cx-border rounded-lg pl-7 pr-2.5 py-1.5
+              className="cx-field w-full bg-cx-elevated border border-cx-border rounded-lg pl-7 pr-2.5 py-1.5
                          text-[11px] text-cx-text placeholder:text-cx-text-muted
-                         focus:outline-none focus:border-cx-accent transition-colors" />
+                         focus:outline-none transition-colors" />
           </div>
         </div>
       )}
@@ -480,8 +595,8 @@ function PortListEditor({ node, portKey, accentColor, label }: {
               <select value={port.dataType}
                 onChange={e => savePorts(ports.map(p => p.id === port.id ? { ...p, dataType: e.target.value } : p))}
                 style={{ color: typeColor }}
-                className="flex-1 bg-cx-surface border border-cx-border rounded-lg px-1.5 py-0.5
-                           text-[10px] focus:outline-none focus:border-cx-accent transition-colors">
+                className="cx-field flex-1 bg-cx-surface border border-cx-border rounded-lg px-1.5 py-0.5
+                           text-[10px] focus:outline-none transition-colors">
                 {DATA_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
               <label className="flex items-center gap-1 text-[10px] text-cx-text-muted cursor-pointer">
@@ -521,28 +636,30 @@ function NotesTab({ node }: { node: CortexNode }) {
 
   return (
     <div className="p-3 space-y-4">
-      <Field label="Notes">
+      <div className="space-y-1.5">
+        <FieldLabel label="Notes" />
         <textarea value={notes}
           onChange={isAdmin ? e => setNotes(e.target.value) : undefined}
           onBlur={isAdmin ? () => updateNode({ id: node.id, notes }) : undefined}
           readOnly={!isAdmin}
           rows={6} placeholder={isAdmin ? "Your notes about this node…" : "No notes yet."}
-          className="w-full bg-cx-elevated border border-cx-border rounded-xl px-3 py-2
+          className="cx-field w-full bg-cx-elevated border border-cx-border rounded-xl px-3 py-2
                      text-[11px] text-cx-text-dim leading-relaxed resize-none
-                     focus:outline-none focus:border-cx-accent transition-colors
+                     focus:outline-none transition-colors
                      placeholder:text-cx-text-muted/40 read-only:opacity-60 read-only:cursor-default" />
-      </Field>
-      <Field label="Documentation">
+      </div>
+      <div className="space-y-1.5">
+        <FieldLabel label="Documentation" />
         <textarea value={docs}
           onChange={isAdmin ? e => setDocs(e.target.value) : undefined}
           onBlur={isAdmin ? () => updateNode({ id: node.id, documentation: docs }) : undefined}
           readOnly={!isAdmin}
           rows={4} placeholder={isAdmin ? "Paste a doc URL or reference text…" : ""}
-          className="w-full bg-cx-elevated border border-cx-border rounded-xl px-3 py-2
+          className="cx-field w-full bg-cx-elevated border border-cx-border rounded-xl px-3 py-2
                      text-[11px] text-cx-text-dim leading-relaxed resize-none
-                     focus:outline-none focus:border-cx-accent transition-colors
+                     focus:outline-none transition-colors
                      placeholder:text-cx-text-muted/40 read-only:opacity-60 read-only:cursor-default" />
-      </Field>
+      </div>
       {docs.startsWith('http') && (
         <a href={docs} target="_blank" rel="noreferrer"
            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-cx-elevated border border-cx-border
@@ -555,17 +672,35 @@ function NotesTab({ node }: { node: CortexNode }) {
 }
 
 /* ── Helpers ─────────────────────────────────────────────── */
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function FieldLabel({ label, hint, saved }: { label: string; hint?: string; saved?: boolean }) {
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-baseline gap-1.5">
-        <span className="text-[9px] font-bold uppercase tracking-widest text-cx-text-muted">{label}</span>
-        {hint && <span className="text-[9px] text-cx-text-muted opacity-50">{hint}</span>}
-      </div>
+    <div className="flex items-baseline gap-1.5">
+      <span className="text-[9px] font-bold uppercase tracking-widest"
+            style={{ color: 'rgba(80,80,130,0.85)' }}>
+        {label}
+      </span>
+      {hint && <span className="text-[9px] opacity-50" style={{ color: 'rgba(80,80,130,0.7)' }}>{hint}</span>}
+      <span className="ml-auto text-[8px] font-semibold transition-all duration-300"
+            style={{
+              color: '#34d399',
+              opacity: saved ? 1 : 0,
+              transform: saved ? 'translateY(0)' : 'translateY(2px)',
+            }}>
+        ✓ saved
+      </span>
+    </div>
+  )
+}
+
+function FieldCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl p-2.5"
+         style={{ background: 'rgba(14,14,34,0.5)', border: '1px solid rgba(24,24,58,0.7)' }}>
       {children}
     </div>
   )
 }
+
 function StatChip({ label, value, color }: { label: string; value: number|string; color: string }) {
   return (
     <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg"
@@ -583,6 +718,16 @@ function EmptyTabState({ icon, message }: { icon: string; message: string }) {
     </div>
   )
 }
+
+/* ── Icons ───────────────────────────────────────────────── */
+function EditPencilIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"
+         strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 8.5h2.5L8.2 3.8a1 1 0 000-1.4L7.6 1.8a1 1 0 00-1.4 0L1.5 6.5V8.5z"/>
+    </svg>
+  )
+}
 function XIcon() {
   return (
     <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -598,7 +743,6 @@ function LinkIcon() {
     </svg>
   )
 }
-
 function HexOutline({ size = 48, opacity = 0.18 }: { size?: number; opacity?: number }) {
   const cx = size / 2, cy = size / 2, r = size * 0.44
   const pts = Array.from({ length: 6 }, (_, i) => {
@@ -611,7 +755,6 @@ function HexOutline({ size = 48, opacity = 0.18 }: { size?: number; opacity?: nu
     </svg>
   )
 }
-
 function CanvasHint() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor"
@@ -625,7 +768,6 @@ function CanvasHint() {
     </svg>
   )
 }
-
 function LibraryHint() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor"
@@ -636,7 +778,6 @@ function LibraryHint() {
     </svg>
   )
 }
-
 function SearchHint() {
   return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor"
@@ -646,7 +787,6 @@ function SearchHint() {
     </svg>
   )
 }
-
 function PlusIcon() {
   return (
     <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor"
@@ -656,7 +796,6 @@ function PlusIcon() {
     </svg>
   )
 }
-
 function StarIcon({ filled }: { filled?: boolean }) {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill={filled ? 'currentColor' : 'none'}
@@ -665,7 +804,6 @@ function StarIcon({ filled }: { filled?: boolean }) {
     </svg>
   )
 }
-
 function CopyIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor"
@@ -675,7 +813,6 @@ function CopyIcon() {
     </svg>
   )
 }
-
 function CheckIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor"
@@ -684,9 +821,164 @@ function CheckIcon() {
     </svg>
   )
 }
-
 function Divider() {
   return (
     <div style={{ height: '1px', background: 'rgba(24,24,58,0.7)', margin: '2px 0' }} />
+  )
+}
+
+/* ── Relations Tab ───────────────────────────────────────── */
+const REL_TYPE_OPTIONS: RelationshipType[] = [
+  'uses','depends_on','consumes','creates','references',
+  'connected_to','similar_to','alternative_to','triggers','custom',
+]
+
+function RelationsTab({ node }: { node: CortexNode }) {
+  const { activeVaultId } = useVaultStore()
+  const { getAllNodes } = useNodeStore()
+  const { isAdmin } = useAdminStore()
+
+  const [rels, setRels] = useState<Relationship[]>([])
+  const [loading, setLoading] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [targetId, setTargetId] = useState('')
+  const [relType, setRelType] = useState<RelationshipType>('references')
+  const [relLabel, setRelLabel] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [search, setSearch] = useState('')
+
+  const allNodes = getAllNodes().filter(n => n.id !== node.id)
+  const filteredNodes = search.trim()
+    ? allNodes.filter(n => n.displayName.toLowerCase().includes(search.toLowerCase())).slice(0, 8)
+    : []
+
+  const load = async () => {
+    setLoading(true)
+    try { setRels(await RelationshipService.getForObject(node.id)) }
+    catch { /* ignore */ }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { load() }, [node.id])
+
+  const handleAdd = async () => {
+    if (!targetId || !activeVaultId) return
+    setSaving(true)
+    try {
+      const rel = await RelationshipService.create({
+        vaultId: activeVaultId,
+        sourceId: node.id,
+        targetId,
+        relationshipType: relType,
+        label: relLabel.trim() || undefined,
+      })
+      setRels(r => [...r, rel])
+      setAdding(false)
+      setTargetId(''); setRelLabel(''); setSearch('')
+    } catch { /* ignore */ }
+    finally { setSaving(false) }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Remove this relationship?')) return
+    try {
+      await RelationshipService.delete(id)
+      setRels(r => r.filter(x => x.id !== id))
+    } catch { /* ignore */ }
+  }
+
+  const getNodeName = (id: string) => allNodes.find(n => n.id === id)?.displayName ?? id.slice(0,8)+'…'
+
+  return (
+    <div className="p-3 flex flex-col gap-3">
+      {loading ? (
+        <p className="text-[10px] text-cx-text-muted text-center py-4">Loading…</p>
+      ) : rels.length === 0 && !adding ? (
+        <div className="text-center py-6">
+          <div className="text-[28px] opacity-15 mb-2">⇌</div>
+          <p className="text-[11px] text-cx-text-muted">No relationships yet</p>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {rels.map(rel => {
+            const isSource = rel.sourceId === node.id
+            const otherId = isSource ? rel.targetId : rel.sourceId
+            const color = '#7b6fff'
+            return (
+              <div key={rel.id} className="flex items-center gap-2 px-2.5 py-2 rounded-lg group"
+                   style={{ background: 'rgba(14,14,34,0.7)', border: '1px solid rgba(24,24,58,0.8)' }}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full"
+                          style={{ background: `${color}18`, color, border: `1px solid ${color}30` }}>
+                      {isSource ? '→' : '←'} {RELATIONSHIP_LABELS[rel.relationshipType]}
+                    </span>
+                    {rel.bidirectional && <span className="text-[8px] text-cx-text-muted">↔</span>}
+                  </div>
+                  <p className="text-[11px] text-cx-text truncate mt-0.5">{getNodeName(otherId)}</p>
+                  {rel.label && <p className="text-[9px] text-cx-text-muted truncate">{rel.label}</p>}
+                </div>
+                {isAdmin && (
+                  <button onClick={() => handleDelete(rel.id)}
+                    className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center
+                               rounded transition-all text-cx-text-muted hover:text-cx-error flex-shrink-0">
+                    <svg width="9" height="9" viewBox="0 0 9 9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                      <line x1="1.5" y1="1.5" x2="7.5" y2="7.5"/><line x1="7.5" y1="1.5" x2="1.5" y2="7.5"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {adding ? (
+        <div className="space-y-2 p-2.5 rounded-xl" style={{ background: 'rgba(14,14,34,0.8)', border: '1px solid rgba(36,36,80,0.8)' }}>
+          <div className="relative">
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search node…"
+              className="w-full bg-cx-bg border border-cx-border rounded-lg px-2.5 py-1.5 text-[11px]
+                         text-cx-text placeholder-cx-text-muted focus:outline-none focus:border-cx-accent/50" />
+            {filteredNodes.length > 0 && (
+              <div className="absolute top-full left-0 right-0 z-10 mt-0.5 rounded-lg overflow-hidden"
+                   style={{ background: 'rgba(10,10,24,0.98)', border: '1px solid rgba(36,36,80,0.9)' }}>
+                {filteredNodes.map(n => (
+                  <button key={n.id} onClick={() => { setTargetId(n.id); setSearch(n.displayName) }}
+                    className="w-full px-2.5 py-1.5 text-left text-[11px] text-cx-text-dim
+                               hover:bg-cx-elevated hover:text-cx-text transition-colors">
+                    {n.displayName}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <select value={relType} onChange={e => setRelType(e.target.value as RelationshipType)}
+            className="w-full bg-cx-bg border border-cx-border rounded-lg px-2.5 py-1.5 text-[11px]
+                       text-cx-text focus:outline-none focus:border-cx-accent/50">
+            {REL_TYPE_OPTIONS.map(t => <option key={t} value={t}>{RELATIONSHIP_LABELS[t]}</option>)}
+          </select>
+          <input value={relLabel} onChange={e => setRelLabel(e.target.value)} placeholder="Label (optional)"
+            className="w-full bg-cx-bg border border-cx-border rounded-lg px-2.5 py-1.5 text-[11px]
+                       text-cx-text placeholder-cx-text-muted focus:outline-none focus:border-cx-accent/50" />
+          <div className="flex gap-1.5">
+            <button onClick={handleAdd} disabled={!targetId || saving}
+              className="flex-1 py-1.5 rounded-lg text-[11px] font-medium text-white transition-colors disabled:opacity-40"
+              style={{ background: 'var(--cx-accent)' }}>
+              {saving ? 'Saving…' : 'Add'}
+            </button>
+            <button onClick={() => { setAdding(false); setTargetId(''); setSearch('') }}
+              className="flex-1 py-1.5 rounded-lg text-[11px] text-cx-text-muted border border-cx-border hover:text-cx-text transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : isAdmin ? (
+        <button onClick={() => setAdding(true)}
+          className="w-full py-1.5 rounded-lg text-[11px] text-cx-text-muted border border-dashed border-cx-border
+                     hover:text-cx-text hover:border-cx-accent/30 transition-colors">
+          + Add Relationship
+        </button>
+      ) : null}
+    </div>
   )
 }

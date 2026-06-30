@@ -47,24 +47,49 @@ impl ImportEngine {
     }
 
     fn import_nuke(&self, path: &str) -> CortexResult<ImportResult> {
-        // .nk files are text-based — parseable directly
         let content = std::fs::read_to_string(path)?;
         let mut nodes_imported = 0u32;
+        let mut edges_imported = 0u32;
+        let mut parameters_imported = 0u32;
 
-        // Very basic .nk node counting (each node block starts with NodeType {)
+        // Parse .nk text format:
+        //   NodeType {         <- node start (type is the word before {)
+        //     name VALUE       <- node name
+        //     inputs N         <- input connection count
+        //     param VALUE      <- parameter
+        //   }                  <- node end
+        let mut in_node = false;
         for line in content.lines() {
             let trimmed = line.trim();
-            if trimmed.ends_with('{') && !trimmed.starts_with('#') && !trimmed.starts_with("Root") {
+            if trimmed.is_empty() || trimmed.starts_with('#') { continue }
+
+            if !in_node && trimmed.ends_with('{') && !trimmed.starts_with("Root") && !trimmed.starts_with("set ") {
+                in_node = true;
                 nodes_imported += 1;
+                continue;
+            }
+            if in_node {
+                if trimmed == "}" { in_node = false; continue }
+                // count inputs lines as edges
+                if trimmed.starts_with("inputs ") {
+                    if let Ok(n) = trimmed["inputs ".len()..].parse::<u32>() {
+                        if n > 0 { edges_imported += n }
+                    }
+                } else if !trimmed.starts_with("name ") && !trimmed.starts_with("xpos ")
+                       && !trimmed.starts_with("ypos ") && !trimmed.starts_with("selected ") {
+                    // Everything else is a parameter
+                    parameters_imported += 1;
+                }
             }
         }
 
-        Ok(ImportResult {
-            nodes_imported,
-            edges_imported: 0,
-            parameters_imported: 0,
-            warnings: vec!["Full parameter extraction from .nk files is a WIP".into()],
-        })
+        let warnings = if nodes_imported == 0 {
+            vec!["No node blocks found — is this a valid .nk file?".into()]
+        } else {
+            vec![]
+        };
+
+        Ok(ImportResult { nodes_imported, edges_imported, parameters_imported, warnings })
     }
 
     fn import_blender(&self, _path: &str) -> CortexResult<ImportResult> {

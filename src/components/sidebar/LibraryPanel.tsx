@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { ContextMenu, useContextMenu, MenuItemDef } from '@/components/ui/ContextMenu'
 import { EmptyState, EmptyIcons } from '@/components/ui/EmptyState'
 import { NodeRowSkeleton } from '@/components/ui/Skeleton'
 import { useNodeStore } from '@/stores/node.store'
@@ -18,6 +19,7 @@ export function LibraryPanel() {
   const { getAllNodes, selectNode, selectedNodeId, deleteNode, isLoading, error: nodeError, loadNodes } = useNodeStore()
   const { activeGraphId, addNode: addToGraph } = useGraphStore()
   const { addToast, activeTagFilter, setTagFilter } = useUiStore()
+  const { menu: ctxMenu, open: openCtx, close: closeCtx } = useContextMenu()
 
   const [filter, setFilter] = useState('')
 
@@ -27,6 +29,7 @@ export function LibraryPanel() {
   }, [activeTagFilter])
   const [showCreate, setShowCreate] = useState(false)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [dragNodeId, setDragNodeId] = useState<string | null>(null)
 
   const nodes = getAllNodes()
   const filtered = nodes.filter(n => {
@@ -140,10 +143,31 @@ export function LibraryPanel() {
                   const confirming = confirmId === node.id
                   return (
                     <div key={node.id}
-                      className={cn('group flex items-center gap-1 px-2 transition-colors',
+                      draggable
+                      onDragStart={e => {
+                        setDragNodeId(node.id)
+                        e.dataTransfer.setData('cortex/node-id', node.id)
+                        e.dataTransfer.effectAllowed = 'copy'
+                        // Ghost image
+                        const ghost = document.createElement('div')
+                        ghost.textContent = node.displayName
+                        ghost.style.cssText = 'position:fixed;top:-999px;left:-999px;padding:6px 10px;border-radius:8px;font-size:11px;font-weight:600;color:#eaeaf8;background:rgba(123,111,255,0.9);border:1px solid rgba(123,111,255,0.6);pointer-events:none'
+                        document.body.appendChild(ghost)
+                        e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, ghost.offsetHeight / 2)
+                        setTimeout(() => document.body.removeChild(ghost), 0)
+                      }}
+                      onDragEnd={() => setDragNodeId(null)}
+                      className={cn('group flex items-center gap-1 px-2 transition-colors cursor-grab active:cursor-grabbing',
+                        dragNodeId === node.id ? 'opacity-50 bg-cx-accent/10 ring-1 ring-cx-accent/30' :
                         isSelected ? 'bg-cx-accent/10' : 'hover:bg-cx-elevated')}
-                      onClick={() => selectNode(node.id)}>
-                      <div className="flex items-center gap-2 flex-1 py-1.5 min-w-0 cursor-pointer">
+                      onClick={() => selectNode(node.id)}
+                      onContextMenu={e => { e.stopPropagation(); openCtx(e, [
+                        { kind: 'item', label: 'Select',         icon: <SelectIcon />,  onClick: () => selectNode(node.id) },
+                        { kind: 'item', label: 'Add to Canvas',  icon: <AddIcon />,     onClick: () => handleAddToCanvas(node) },
+                        { kind: 'separator' },
+                        { kind: 'item', label: 'Delete',         icon: <DeleteIcon />,  danger: true, onClick: () => handleDelete(node) },
+                      ] satisfies MenuItemDef[]) }}>
+                      <div className="flex items-center gap-2 flex-1 py-1.5 min-w-0">
                         <span className="text-[13px] flex-shrink-0 opacity-70">
                           {NODE_OBJECT_TYPE_ICONS[node.objectType] ?? '⬡'}
                         </span>
@@ -214,7 +238,25 @@ export function LibraryPanel() {
 
       <NodeBulkActions />
 
+      {ctxMenu && <ContextMenu {...ctxMenu} onClose={closeCtx} />}
       {showCreate && <NodeCreateModal onClose={() => setShowCreate(false)} />}
     </div>
   )
+}
+
+/* ── Context menu icons ──────────────────────────────────── */
+function SelectIcon() {
+  return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 2l3 8 1.5-3L10 5.5 2 2z"/>
+  </svg>
+}
+function AddIcon() {
+  return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+    <line x1="6" y1="2" x2="6" y2="10"/><line x1="2" y1="6" x2="10" y2="6"/>
+  </svg>
+}
+function DeleteIcon() {
+  return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1.5 2.5h9M4 2.5V1.5h4v1M3 2.5l.5 8h5l.5-8"/>
+  </svg>
 }

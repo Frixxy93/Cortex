@@ -4,7 +4,22 @@ use crate::error::CortexResult;
 pub fn run_migrations(conn: &Connection) -> CortexResult<()> {
     conn.execute_batch(SCHEMA_V1)?;
     migrate_v2(conn)?;
+    migrate_v3(conn)?;
     seed_nodes_if_empty(conn)?;
+    Ok(())
+}
+
+fn migrate_v3(conn: &Connection) -> CortexResult<()> {
+    let version: i64 = conn
+        .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
+        .unwrap_or(0);
+    if version >= 3 { return Ok(()); }
+
+    conn.execute_batch(r#"
+        ALTER TABLE nodes  ADD COLUMN deleted_at TEXT;
+        ALTER TABLE graphs ADD COLUMN deleted_at TEXT;
+        INSERT OR IGNORE INTO schema_version (version) VALUES (3);
+    "#)?;
     Ok(())
 }
 

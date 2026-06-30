@@ -1,14 +1,16 @@
-import { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useBridgeStore } from '@/stores/bridge.store'
 import { useAdminStore } from '@/stores/admin.store'
 import { NodeService } from '@/services/node.service'
+import { BridgeService } from '@/services/bridge.service'
+import type { ImportResult } from '@/services/bridge.service'
 
 interface Props { onClose: () => void }
 
-const SOFTWARE_META: Record<string, { label: string; color: string; icon: string }> = {
-  houdini: { label: 'Houdini', color: '#FF6B35', icon: '🌀' },
-  nuke:    { label: 'Nuke',    color: '#8BC34A', icon: '🟢' },
-  katana:  { label: 'Katana',  color: '#E8A020', icon: '🎨' },
+const SOFTWARE_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  houdini: { label: 'Houdini', color: '#FF6B35', icon: <HoudiniIcon /> },
+  nuke:    { label: 'Nuke',    color: '#8BC34A', icon: <NukeIcon /> },
+  katana:  { label: 'Katana',  color: '#E8A020', icon: <KatanaIcon /> },
 }
 const SUPPORTED = Object.keys(SOFTWARE_META)
 
@@ -19,6 +21,9 @@ export function BridgePanel({ onClose }: Props) {
   const [cmdErr, setCmdErr]   = useState<Record<string, string>>({})
   const [seeding, setSeeding] = useState(false)
   const [seedMsg, setSeedMsg] = useState<string | null>(null)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
 
   // On open: scan for software + pre-load all exec commands
   useEffect(() => {
@@ -236,6 +241,67 @@ export function BridgePanel({ onClose }: Props) {
           })}
         </div>
 
+        {/* ── File drop zone ── */}
+        <div className="px-4 pb-3">
+          <div
+            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={async e => {
+              e.preventDefault(); setDragOver(false)
+              const file = e.dataTransfer.files[0]
+              if (!file) return
+              const ext = file.name.split('.').pop()?.toLowerCase()
+              if (!['nk','hip','hiplc','hipnc','blend','json'].includes(ext ?? '')) {
+                setImportResult({ nodesImported: 0, edgesImported: 0, parametersImported: 0, warnings: [`Unsupported file type: .${ext}`] })
+                return
+              }
+              setImporting(true); setImportResult(null)
+              try {
+                // @ts-ignore — webkitRelativePath / path is Tauri-patched
+                const path: string = (file as any).path ?? file.name
+                const result = await BridgeService.importFile(path)
+                setImportResult(result)
+              } catch (e) {
+                setImportResult({ nodesImported: 0, edgesImported: 0, parametersImported: 0, warnings: [String(e)] })
+              } finally { setImporting(false) }
+            }}
+            className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl text-center transition-all"
+            style={{
+              border: dragOver ? '1.5px dashed rgba(251,146,60,0.6)' : '1.5px dashed rgba(255,255,255,0.08)',
+              background: dragOver ? 'rgba(251,146,60,0.06)' : 'rgba(255,255,255,0.02)',
+              cursor: 'default',
+            }}
+          >
+            {importing ? (
+              <span className="text-[11px] text-cx-text-muted animate-pulse">Importing…</span>
+            ) : (
+              <>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'rgba(251,146,60,0.5)' }}>
+                  <path d="M8 2v8M5 7l3 3 3-3"/><path d="M3 12h10"/>
+                </svg>
+                <span className="text-[10px]" style={{ color: 'rgba(150,150,190,0.6)' }}>
+                  Drop .nk · .hip · .blend · .json to import
+                </span>
+              </>
+            )}
+          </div>
+          {importResult && (
+            <div className="mt-2 text-[10px] px-3 py-2 rounded-lg space-y-0.5"
+                 style={{
+                   background: importResult.warnings.length ? 'rgba(251,146,60,0.07)' : 'rgba(34,197,94,0.07)',
+                   border: `1px solid ${importResult.warnings.length ? 'rgba(251,146,60,0.2)' : 'rgba(34,197,94,0.2)'}`,
+                   color: importResult.warnings.length ? '#fb923c' : '#4ade80',
+                 }}>
+              <div className="font-medium">
+                {importResult.nodesImported} nodes · {importResult.edgesImported} edges · {importResult.parametersImported} params
+              </div>
+              {importResult.warnings.map((w, i) => (
+                <div key={i} className="opacity-80">{w}</div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* ── Footer ── */}
         <div className="flex flex-col gap-2 px-5 py-3"
              style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
@@ -299,4 +365,37 @@ function hexToRgb(hex: string): string {
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
   return `${r},${g},${b}`
+}
+
+/* ── Software icons ─────────────────────────────────────── */
+function HoudiniIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 2 C4.5 2 2 4.5 2 8 C2 11.5 4.5 14 8 14"/>
+      <path d="M8 5 C6 5 5 6.5 5 8 C5 9.5 6 11 8 11 C10 11 11 9.5 11 8"/>
+      <path d="M8 8 L13 5 M8 8 L13 11"/>
+    </svg>
+  )
+}
+function NukeIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="3"/>
+      <line x1="8" y1="2" x2="8" y2="5"/>
+      <line x1="8" y1="11" x2="8" y2="14"/>
+      <line x1="2" y1="8" x2="5" y2="8"/>
+      <line x1="11" y1="8" x2="14" y2="8"/>
+      <line x1="3.5" y1="3.5" x2="5.6" y2="5.6"/>
+      <line x1="10.4" y1="10.4" x2="12.5" y2="12.5"/>
+    </svg>
+  )
+}
+function KatanaIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 13 L11 3"/>
+      <path d="M11 3 L13 5 L7 9 L3 13 Z"/>
+      <line x1="2" y1="12" x2="4" y2="14"/>
+    </svg>
+  )
 }

@@ -18,7 +18,37 @@ export interface SettingsState {
   autoSave: boolean
   rightPanelDefault: boolean
   confirmDeletes: boolean
-  chunkSize: number   // IPC batch size for seeding
+  chunkSize: number
+
+  // Nodes
+  nodeSortOrder: 'name' | 'type' | 'recent'
+  nodeShowDescriptions: boolean
+
+  // Search
+  searchScope: 'global' | 'vault' | 'graph'
+  searchResultLimit: number
+  searchFuzzy: boolean
+  searchSaveHistory: boolean
+
+  // Analytics
+  analyticsEnabled: boolean
+  analyticsRetention: 7 | 14 | 30 | 90
+
+  // Media
+  mediaFolder: string
+
+  // Trash
+  trashAutoEmpty: boolean
+  trashRetentionDays: 7 | 14 | 30 | 90
+
+  // App Mode
+  // Profile
+  profileName: string
+  profileColor: string
+
+  titleBarStyle: 'custom' | 'system' | 'minimal'
+  cmdKey: 'auto' | 'meta' | 'ctrl'
+  windowControlsPosition: 'left' | 'right'
 
   // Actions
   set: (patch: Partial<Omit<SettingsState, 'set' | 'reset'>>) => void
@@ -38,6 +68,23 @@ const DEFAULTS = {
   rightPanelDefault: true,
   confirmDeletes: true,
   chunkSize: 50,
+  nodeSortOrder: 'name' as const,
+  nodeShowDescriptions: true,
+  searchScope: 'global' as const,
+  searchResultLimit: 50,
+  searchFuzzy: true,
+  searchSaveHistory: true,
+  analyticsEnabled: true,
+  analyticsRetention: 30 as const,
+  mediaFolder: '',
+  trashAutoEmpty: false,
+  trashRetentionDays: 30 as const,
+  profileName: 'Artist',
+  profileColor: '#7b6fff',
+
+  titleBarStyle: 'custom' as const,
+  cmdKey: 'auto' as const,
+  windowControlsPosition: 'left' as const,
 }
 
 export const useSettingsStore = create<SettingsState>()(

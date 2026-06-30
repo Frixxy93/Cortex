@@ -197,6 +197,7 @@ function CortexApp() {
       const meta = e.metaKey || e.ctrlKey
       if (meta && e.key === 'k') { e.preventDefault(); openCommandPalette(); return }
       if (meta && e.key === 's') { e.preventDefault(); saveGraph(); return }
+      if (meta && e.key === ',') { e.preventDefault(); setSettingsOpen(s => !s); return }
       if (meta && e.shiftKey && e.key === 'z') { e.preventDefault(); redo(); return }
       if (meta && e.key === 'z') { e.preventDefault(); undo(); return }
       if (meta && e.key === 'd') {
@@ -230,7 +231,7 @@ function CortexApp() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-cx-bg text-cx-text">
-      <TitleBar onOpenSettings={() => setSettingsOpen(true)} />
+      <TitleBar onOpenSettings={() => setSettingsOpen(true)} onOpenShortcuts={() => setShortcutsOpen(true)} />
       <div className="flex-1 flex overflow-hidden min-h-0">
         <LeftSidebar
           onOpenSettings={() => setSettingsOpen(true)}

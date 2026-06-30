@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import { AiService } from '@/services/ai.service'
 import type { AiMessage, AiProvider } from '@/types'
 
@@ -16,36 +17,49 @@ interface AiStore {
   clearMessages: () => void
 }
 
-export const useAiStore = create<AiStore>((set, get) => ({
-  messages: [],
-  isStreaming: false,
-  error: null,
-  provider: 'anthropic',
-  apiKey: null,
-  model: null,
+export const useAiStore = create<AiStore>()(
+  persist(
+    (set, get) => ({
+      messages: [],
+      isStreaming: false,
+      error: null,
+      provider: 'anthropic',
+      apiKey: null,
+      model: null,
 
-  setProvider: (provider, apiKey, model) => set({ provider, apiKey: apiKey ?? null, model: model ?? null }),
+      setProvider: (provider, apiKey, model) => set({ provider, apiKey: apiKey ?? null, model: model ?? null }),
 
-  sendMessage: async (content) => {
-    const { messages, provider, apiKey, model } = get()
-    const userMsg: AiMessage = { role: 'user', content }
-    const newMessages = [...messages, userMsg]
+      sendMessage: async (content) => {
+        const { messages, provider, apiKey, model } = get()
+        const userMsg: AiMessage = { role: 'user', content }
+        const newMessages = [...messages, userMsg]
 
-    set({ messages: newMessages, isStreaming: true, error: null })
+        set({ messages: newMessages, isStreaming: true, error: null })
 
-    try {
-      const response = await AiService.chat(
-        { messages: newMessages, model: model ?? undefined },
-        provider,
-        apiKey ?? undefined,
-      )
+        try {
+          const response = await AiService.chat(
+            { messages: newMessages, model: model ?? undefined },
+            provider,
+            apiKey ?? undefined,
+          )
 
-      const assistantMsg: AiMessage = { role: 'assistant', content: response.content }
-      set(s => ({ messages: [...s.messages, assistantMsg], isStreaming: false }))
-    } catch (e) {
-      set({ isStreaming: false, error: String(e) })
+          const assistantMsg: AiMessage = { role: 'assistant', content: response.content }
+          set(s => ({ messages: [...s.messages, assistantMsg], isStreaming: false }))
+        } catch (e) {
+          set({ isStreaming: false, error: String(e) })
+        }
+      },
+
+      clearMessages: () => set({ messages: [], error: null }),
+    }),
+    {
+      name: 'cortex-ai',
+      // Only persist config, not chat history or transient state
+      partialize: (s) => ({
+        provider: s.provider,
+        apiKey: s.apiKey,
+        model: s.model,
+      }),
     }
-  },
-
-  clearMessages: () => set({ messages: [], error: null }),
-}))
+  )
+)

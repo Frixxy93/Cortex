@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useVaultStore } from '@/stores/vault.store'
 import { useGraphStore } from '@/stores/graph.store'
+import { useNodeStore } from '@/stores/node.store'
 import { useUiStore } from '@/stores/ui.store'
 import { CortexLogo } from '@/components/ui/CortexLogo'
 import { VaultCardSkeleton } from '@/components/ui/Skeleton'
+import { ContextMenu, useContextMenu, MenuItemDef } from '@/components/ui/ContextMenu'
 import { cn } from '@/utils/cn'
 
 /* ── Animated graph background ─────────────────────────── */
@@ -76,8 +78,10 @@ const SOFTWARES: Record<string, { icon: string; color: string }> = {
   maya:      { icon: '🧊', color: '#fbbf24' },
 }
 
-function VaultCard({ vault, onClick }: {
+function VaultCard({ vault, graphCount, nodeCount, onClick }: {
   vault: import('@/types/vault').Vault
+  graphCount: number
+  nodeCount: number
   onClick: () => void
 }) {
   const sw    = vault.settings?.defaultSoftware
@@ -117,17 +121,18 @@ function VaultCard({ vault, onClick }: {
 
       {/* Stats */}
       <div className="flex items-center gap-3 mt-3 pt-3 border-t border-cx-border/60">
-        <StatPill label="graphs" value={vault.stats?.graphCount ?? 0} />
+        <StatPill label="graphs" value={graphCount} color="#60a5fa" />
+        <StatPill label="nodes" value={nodeCount} color={color} />
       </div>
     </button>
   )
 }
 
-function StatPill({ label, value }: { label: string; value: number }) {
+function StatPill({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
     <div className="flex flex-col">
-      <span className="text-[15px] font-bold text-cx-text leading-none">{value}</span>
-      <span className="text-[9px] text-cx-text-muted uppercase tracking-wide mt-0.5">{label}</span>
+      <span className="text-[15px] font-bold leading-none" style={{ color: color ?? 'rgba(234,234,248,0.85)' }}>{value}</span>
+      <span className="text-[9px] uppercase tracking-wide mt-0.5" style={{ color: 'rgba(234,234,248,0.25)' }}>{label}</span>
     </div>
   )
 }
@@ -268,9 +273,10 @@ function RecentGraphRow({ graph, active, onClick }: {
 
 /* ── Main dashboard ────────────────────────────────────── */
 export function HomeDashboard() {
-  const { vaults, setActiveVault, isLoading: vaultsLoading } = useVaultStore()
+  const { vaults, setActiveVault, activeVaultId, isLoading: vaultsLoading, deleteVault } = useVaultStore()
   const { graphs, byVault, setActiveGraph, activeGraphId } = useGraphStore()
-  const { setActiveNav } = useUiStore()
+  const getVaultNodes = useNodeStore(s => s.getVaultNodes)
+  const { setActiveNav, openCommandPalette } = useUiStore()
 
   const [creating,  setCreating]  = useState(false)
   const [mounted,   setMounted]   = useState(false)
@@ -287,6 +293,13 @@ export function HomeDashboard() {
     setActiveVault(id)
     setActiveNav('graph')
   }, [setActiveVault, setActiveNav])
+
+  const { menu: ctxMenu, open: openCtx, close: closeCtx } = useContextMenu()
+
+  const handleDeleteVault = async (id: string, name: string) => {
+    if (!window.confirm(`Delete vault "${name}"? This cannot be undone.`)) return
+    await deleteVault(id)
+  }
 
   // all recent graphs across all vaults (capped at 6)
   const recentGraphs = vaults
@@ -413,7 +426,13 @@ export function HomeDashboard() {
                   {vaultsLoading
                     ? Array.from({ length: 4 }).map((_, i) => <VaultCardSkeleton key={i} />)
                     : vaults.map(vault => (
-                        <VaultCard key={vault.id} vault={vault} onClick={() => handleSelectVault(vault.id)} />
+                        <div key={vault.id} onContextMenu={e => openCtx(e, [
+                          { kind: 'item', label: 'Open',   icon: <VCOpenIcon />,  onClick: () => handleSelectVault(vault.id) },
+                          { kind: 'separator' },
+                          { kind: 'item', label: 'Delete', icon: <VCTrashIcon />, danger: true, onClick: () => handleDeleteVault(vault.id, vault.name) },
+                        ] satisfies MenuItemDef[])}>
+                          <VaultCard vault={vault} graphCount={byVault[vault.id]?.length ?? 0} nodeCount={getVaultNodes(vault.id).length} onClick={() => handleSelectVault(vault.id)} />
+                        </div>
                       ))
                   }
                   {!creating && !vaultsLoading && (
@@ -465,11 +484,11 @@ export function HomeDashboard() {
               <section>
                 <SectionLabel>Quick Actions</SectionLabel>
                 <div className="flex flex-wrap gap-2">
-                  <QuickAction icon="🗂️" label="Browse Nodes" onClick={() => setActiveNav('nodes')} />
-                  <QuickAction icon="🔍" label="Search"       onClick={() => setActiveNav('search')} />
-                  <QuickAction icon="📊" label="Analytics"    onClick={() => setActiveNav('analytics')} />
-                  <QuickAction icon="🔌" label="Bridge"       onClick={() => setActiveNav('import')} />
-                  <QuickAction icon="✨" label="AI Copilot"   onClick={() => setActiveNav('ai')} />
+                  <QuickAction icon={<QAGraphIcon />}    color="#60a5fa" label="Open Graph"   onClick={() => { if (activeGraphId) { setActiveNav('graph') } else { openCommandPalette() } }} />
+                  <QuickAction icon={<QANodesIcon />}     color="#a78bfa" label="Browse Nodes" onClick={() => setActiveNav('nodes')} />
+                  <QuickAction icon={<QASearchIcon />}    color="#34d399" label="Search"       onClick={() => setActiveNav('search')} />
+                  <QuickAction icon={<QAAnalyticsIcon />} color="#f59e0b" label="Analytics"    onClick={() => setActiveNav('analytics')} />
+                  <QuickAction icon={<QAAiIcon />}        color="#22d3ee" label="AI Copilot"   onClick={() => setActiveNav('ai')} />
                 </div>
               </section>
             )}
@@ -478,6 +497,7 @@ export function HomeDashboard() {
         </div>
         )}
       </div>
+      {ctxMenu && <ContextMenu {...ctxMenu} onClose={closeCtx} />}
     </div>
   )
 }
@@ -485,23 +505,44 @@ export function HomeDashboard() {
 /* ── Helpers ───────────────────────────────────────────── */
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[10px] font-semibold text-cx-text-muted uppercase tracking-[0.12em] mb-3">
-      {children}
+    <div className="flex items-center gap-2.5 mb-3">
+      <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(234,234,248,0.22)' }}>
+        {children}
+      </span>
+      <div className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.06), transparent)' }} />
     </div>
   )
 }
 
-function QuickAction({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
+function QuickAction({ icon, color, label, onClick }: { icon: React.ReactNode; color: string; label: string; onClick: () => void }) {
+  const [hovered, setHovered] = useState(false)
   return (
-    <button onClick={onClick}
-      className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-cx-border
-                 text-[12px] text-cx-text-muted hover:text-cx-text hover:border-cx-accent/30
-                 hover:bg-cx-elevated/60 transition-all">
-      <span>{icon}</span>
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-[12px] font-medium transition-all duration-150"
+      style={{
+        background: hovered ? color + '12' : 'rgba(255,255,255,0.03)',
+        border: '1px solid ' + (hovered ? color + '30' : 'rgba(255,255,255,0.07)'),
+        color:  hovered ? 'rgba(234,234,248,0.85)' : 'rgba(234,234,248,0.4)',
+      }}
+    >
+      <span style={{ color: hovered ? color : 'rgba(234,234,248,0.3)', transition: 'color 0.15s', display: 'flex' }}>
+        {icon}
+      </span>
       <span>{label}</span>
     </button>
   )
 }
+
+/* ── Quick action icons ───────────────────────────────────── */
+function QAGraphIcon()     { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="2.5" cy="6.5" r="1.5"/><circle cx="10.5" cy="2.5" r="1.5"/><circle cx="10.5" cy="10.5" r="1.5"/><line x1="4" y1="5.8" x2="9" y2="3.2"/><line x1="4" y1="7.2" x2="9" y2="9.8"/></svg> }
+function QANodesIcon()     { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 1 L11 3.5 L11 8.5 L6.5 11 L2 8.5 L2 3.5 Z"/></svg> }
+function QASearchIcon()    { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="5.5" cy="5.5" r="4"/><line x1="8.5" y1="8.5" x2="12" y2="12"/></svg> }
+function QAAnalyticsIcon() { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 10 L4 6.5 L7 8.5 L11 3"/><circle cx="11" cy="3" r="1" fill="currentColor" stroke="none"/></svg> }
+function QABridgeIcon()    { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 1.5 L6.5 9"/><path d="M4 7 L6.5 9.5 L9 7"/><path d="M1.5 11 H11.5"/></svg> }
+function QAAiIcon()        { return <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 2h4M6.5 2v2M3 4.5h7l1 6H2l1-6zM5 7.5h3M6.5 7.5V9"/></svg> }
 
 function XIcon() {
   return <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -522,5 +563,18 @@ function VaultIcon() {
     <rect x="15" y="3" width="10" height="10" rx="2"/>
     <rect x="3" y="15" width="10" height="10" rx="2"/>
     <rect x="15" y="15" width="10" height="10" rx="2"/>
+  </svg>
+}
+
+/* ── Vault card context menu icons ───────────────────────── */
+function VCOpenIcon() {
+  return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 2H2a1 1 0 00-1 1v7a1 1 0 001 1h7a1 1 0 001-1V7"/>
+    <path d="M8 1h3m0 0v3m0-3L6 6"/>
+  </svg>
+}
+function VCTrashIcon() {
+  return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1.5 2.5h9M4 2.5V1.5h4v1M3 2.5l.5 8h5l.5-8"/>
   </svg>
 }
