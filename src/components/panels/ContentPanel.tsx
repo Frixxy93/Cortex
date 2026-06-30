@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { EmptyState, EmptyIcons } from '@/components/ui/EmptyState'
+import { GraphRowSkeleton } from '@/components/ui/Skeleton'
 import { useUiStore } from '@/stores/ui.store'
 import { useVaultStore } from '@/stores/vault.store'
 import { useGraphStore } from '@/stores/graph.store'
@@ -56,7 +58,7 @@ export function ContentPanel() {
 /* ── Graph list ─────────────────────────────────────────── */
 function GraphListPanel() {
   const { activeVaultId } = useVaultStore()
-  const { graphs, byVault, activeGraphId, setActiveGraph, createGraph, deleteGraph, renameGraph } = useGraphStore()
+  const { graphs, byVault, activeGraphId, setActiveGraph, createGraph, deleteGraph, renameGraph, isLoading: graphsLoading } = useGraphStore()
   const { addToast } = useUiStore()
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -104,8 +106,18 @@ function GraphListPanel() {
         </button>
       </div>
       <div className="flex-1 overflow-y-auto py-1">
-        {list.length === 0 ? (
-          <div className="px-3 py-6 text-center text-[11px] text-cx-text-muted">No graphs yet</div>
+        {graphsLoading ? (
+          <div className="py-1">
+            {Array.from({ length: 5 }).map((_, i) => <GraphRowSkeleton key={i} />)}
+          </div>
+        ) : list.length === 0 ? (
+          <EmptyState
+            size="sm"
+            icon={<EmptyIcons.Graph />}
+            title="No graphs yet"
+            body="Create a graph to start building your node network"
+            action={{ label: '+ New Graph', onClick: handleCreate }}
+          />
         ) : list.map(g => {
           const active = g.id === activeGraphId
           const confirming = confirmId === g.id

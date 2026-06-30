@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { EmptyState, EmptyIcons } from '@/components/ui/EmptyState'
+import { NodeRowSkeleton } from '@/components/ui/Skeleton'
 import { useNodeStore } from '@/stores/node.store'
 import { useVaultStore } from '@/stores/vault.store'
 import { useGraphStore } from '@/stores/graph.store'
@@ -95,39 +97,34 @@ export function LibraryPanel() {
       {/* Node list */}
       <div className="flex-1 overflow-y-auto">
         {nodes.length === 0 ? (
-          <div className="p-4 text-center space-y-2">
-            {isLoading ? (
-              <>
-                <div className="text-[11px] text-cx-text-muted animate-pulse">Seeding nodes…</div>
-                <div className="h-1 bg-cx-elevated rounded-full overflow-hidden mx-2">
-                  <div className="h-full bg-cx-accent rounded-full animate-pulse w-1/2" />
-                </div>
-              </>
-            ) : nodeError ? (
-              <>
-                <p className="text-[10px] text-cx-error leading-relaxed">{nodeError}</p>
-                <button
-                  onClick={() => loadNodes()}
-                  className="mt-1 px-3 py-1.5 rounded-lg text-[11px] text-white
-                             bg-cx-accent hover:bg-cx-accent-dim transition-colors">
-                  Retry
-                </button>
-              </>
-            ) : (
-              <>
-                <p className="text-[11px] text-cx-text-muted">No nodes yet.</p>
-                <button onClick={() => setShowCreate(true)}
-                  className="mt-1 px-3 py-1.5 rounded-lg text-[11px] text-white
-                             bg-cx-accent hover:bg-cx-accent-dim transition-colors">
-                  + Create First Node
-                </button>
-              </>
-            )}
-          </div>
+          isLoading ? (
+            <div className="py-1">
+              {Array.from({ length: 8 }).map((_, i) => <NodeRowSkeleton key={i} />)}
+            </div>
+          ) : nodeError ? (
+            <EmptyState
+              size="sm"
+              icon={<EmptyIcons.Nodes />}
+              title="Failed to load nodes"
+              body={nodeError}
+              action={{ label: 'Retry', onClick: () => loadNodes() }}
+            />
+          ) : (
+            <EmptyState
+              size="sm"
+              icon={<EmptyIcons.Nodes />}
+              title="No nodes yet"
+              body="Import from your DCC or create nodes manually"
+              action={{ label: '+ Create Node', onClick: () => setShowCreate(true) }}
+            />
+          )
         ) : filtered.length === 0 ? (
-          <div className="p-4 text-center text-[11px] text-cx-text-muted">
-            No results for "{filter}"
-          </div>
+          <EmptyState
+            size="sm"
+            icon={<EmptyIcons.Filter />}
+            title="No matches"
+            body={`Nothing matched "${filter}"`}
+          />
         ) : (
           Object.entries(groups).sort(([a],[b]) => a.localeCompare(b)).map(([cat, catNodes]) => {
             const color = CATEGORY_COLORS[cat] ?? CATEGORY_COLORS.default

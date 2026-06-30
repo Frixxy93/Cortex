@@ -3,6 +3,7 @@ import { useVaultStore } from '@/stores/vault.store'
 import { useGraphStore } from '@/stores/graph.store'
 import { useUiStore } from '@/stores/ui.store'
 import { CortexLogo } from '@/components/ui/CortexLogo'
+import { VaultCardSkeleton } from '@/components/ui/Skeleton'
 import { cn } from '@/utils/cn'
 
 /* ── Animated graph background ─────────────────────────── */
@@ -267,7 +268,7 @@ function RecentGraphRow({ graph, active, onClick }: {
 
 /* ── Main dashboard ────────────────────────────────────── */
 export function HomeDashboard() {
-  const { vaults, setActiveVault } = useVaultStore()
+  const { vaults, setActiveVault, isLoading: vaultsLoading } = useVaultStore()
   const { graphs, byVault, setActiveGraph, activeGraphId } = useGraphStore()
   const { setActiveNav } = useUiStore()
 
@@ -393,7 +394,7 @@ export function HomeDashboard() {
         )}
 
         {/* Scrollable content — only when creating or have vaults */}
-        {(creating || vaults.length > 0) && (
+        {(creating || vaultsLoading || vaults.length > 0) && (
         <div className="flex-1 overflow-y-auto px-8 pb-8">
           <div className="max-w-4xl mx-auto space-y-8 pt-2">
 
@@ -405,14 +406,17 @@ export function HomeDashboard() {
             )}
 
             {/* Vault grid */}
-            {vaults.length > 0 && (
+            {(vaultsLoading || vaults.length > 0) && (
               <section>
                 <SectionLabel>Vaults</SectionLabel>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                  {vaults.map(vault => (
-                    <VaultCard key={vault.id} vault={vault} onClick={() => handleSelectVault(vault.id)} />
-                  ))}
-                  {!creating && (
+                  {vaultsLoading
+                    ? Array.from({ length: 4 }).map((_, i) => <VaultCardSkeleton key={i} />)
+                    : vaults.map(vault => (
+                        <VaultCard key={vault.id} vault={vault} onClick={() => handleSelectVault(vault.id)} />
+                      ))
+                  }
+                  {!creating && !vaultsLoading && (
                     <button onClick={() => setCreating(true)}
                       className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl
                                  border border-dashed border-cx-border hover:border-cx-accent/40

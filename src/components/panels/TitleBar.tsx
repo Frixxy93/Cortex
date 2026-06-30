@@ -1,22 +1,48 @@
 import { useState } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useUiStore } from '@/stores/ui.store'
+import { useVaultStore } from '@/stores/vault.store'
+import { useAdminStore } from '@/stores/admin.store'
 import { CortexLogo } from '@/components/ui/CortexLogo'
 import { cn } from '@/utils/cn'
 
 const appWindow = getCurrentWindow()
 
-export function TitleBar() {
-  const { openCommandPalette, toggleRightPanel, rightPanelOpen } = useUiStore()
+const NAV_LABELS: Record<string, string> = {
+  home:      'Home',
+  graph:     'Graph',
+  nodes:     'Nodes',
+  search:    'Search',
+  analytics: 'Analytics',
+  import:    'Bridge',
+  ai:        'AI Copilot',
+  recipes:   'Recipes',
+  templates: 'Templates',
+  media:     'Media',
+  bookmarks: 'Bookmarks',
+  trash:     'Trash',
+}
+
+interface Props {
+  onOpenSettings?: () => void
+}
+
+export function TitleBar({ onOpenSettings }: Props) {
+  const { openCommandPalette, toggleRightPanel, rightPanelOpen, activeNavId } = useUiStore()
+  const { activeVault } = useVaultStore()
+  const { isAdmin } = useAdminStore()
   const [searchHovered, setSearchHovered] = useState(false)
+
+  const vault    = activeVault()
+  const navLabel = activeNavId ? (NAV_LABELS[activeNavId] ?? activeNavId) : null
 
   return (
     <div
       className="drag flex items-center h-11 flex-shrink-0 px-4 gap-3 select-none relative z-30"
       style={{
-        background: 'linear-gradient(180deg, rgba(13,13,28,0.98) 0%, rgba(9,9,26,0.95) 100%)',
+        background:   'linear-gradient(180deg, rgba(13,13,28,0.98) 0%, rgba(9,9,26,0.95) 100%)',
         borderBottom: '1px solid rgba(24,24,58,0.8)',
-        boxShadow: '0 1px 0 rgba(255,255,255,0.025), 0 4px 16px rgba(0,0,0,0.3)',
+        boxShadow:    '0 1px 0 rgba(255,255,255,0.025), 0 4px 16px rgba(0,0,0,0.3)',
       }}
     >
       {/* macOS window controls */}
@@ -32,19 +58,63 @@ export function TitleBar() {
         </WinBtn>
       </div>
 
-      {/* Brand */}
-      <div className="drag flex items-center gap-2 flex-shrink-0 pl-1">
-        <CortexLogo size="sm" />
+      {/* Brand + breadcrumb */}
+      <div className="no-drag flex items-center gap-2 flex-shrink-0 pl-1">
+        <CortexLogo size="sm" showWordmark={false} />
+
+        {/* Breadcrumb: vault > section */}
+        <div className="flex items-center gap-1.5">
+          {vault ? (
+            <>
+              <span
+                className="text-[12px] font-semibold truncate max-w-[120px]"
+                style={{ color: 'rgba(234,234,248,0.75)' }}
+                title={vault.name}
+              >
+                {vault.name}
+              </span>
+              {navLabel && navLabel !== 'Home' && (
+                <>
+                  <ChevronRight />
+                  <span
+                    className="text-[11px] font-medium"
+                    style={{ color: 'rgba(123,111,255,0.85)' }}
+                  >
+                    {navLabel}
+                  </span>
+                </>
+              )}
+            </>
+          ) : (
+            <span className="text-[12px] font-semibold" style={{ color: 'rgba(234,234,248,0.5)' }}>
+              CORTEX
+            </span>
+          )}
+        </div>
+
+        {/* Admin badge */}
+        {isAdmin && (
+          <div
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider"
+            style={{
+              background: 'rgba(239,68,68,0.1)',
+              border:     '1px solid rgba(239,68,68,0.25)',
+              color:      'rgba(239,68,68,0.8)',
+            }}
+          >
+            ADMIN
+          </div>
+        )}
       </div>
 
       {/* Center search */}
-      <div className="drag flex-1 flex justify-center px-6">
+      <div className="drag flex-1 flex justify-center px-4">
         <button
           className={cn(
             'no-drag w-full max-w-[520px] flex items-center gap-2.5 px-4 py-2 rounded-xl text-left',
-            'border transition-all duration-200 group',
+            'border transition-all duration-200',
             searchHovered
-              ? 'border-cx-accent/30 bg-cx-elevated shadow-[0_0_0_3px_rgba(123,111,255,0.08),0_0_20px_rgba(123,111,255,0.06)]'
+              ? 'border-cx-accent/30 bg-cx-elevated shadow-[0_0_0_3px_rgba(123,111,255,0.08)]'
               : 'border-cx-border bg-cx-elevated/50 hover:bg-cx-elevated/80 hover:border-cx-border-bright'
           )}
           onClick={() => openCommandPalette()}
@@ -58,21 +128,19 @@ export function TitleBar() {
           )}>
             Search nodes, parameters, tags…
           </span>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <kbd className="text-[10px] text-cx-text-muted font-mono bg-cx-bg px-1.5 py-0.5
-                            rounded border border-cx-border leading-none">
-              ⌘K
-            </kbd>
-          </div>
+          <kbd className="text-[10px] text-cx-text-muted font-mono bg-cx-bg px-1.5 py-0.5
+                          rounded border border-cx-border leading-none flex-shrink-0">
+            ⌘K
+          </kbd>
         </button>
       </div>
 
       {/* Right actions */}
       <div className="no-drag flex items-center gap-0.5 flex-shrink-0">
-        <IconBtn title="Inspector" active={rightPanelOpen} onClick={toggleRightPanel}>
+        <IconBtn title="Inspector panel" active={rightPanelOpen} onClick={toggleRightPanel}>
           <InspectorIcon />
         </IconBtn>
-        <IconBtn title="Settings">
+        <IconBtn title="Settings" onClick={onOpenSettings}>
           <SettingsIcon />
         </IconBtn>
         <IconBtn title="Notifications">
@@ -86,7 +154,7 @@ export function TitleBar() {
                      hover:scale-105 hover:shadow-[0_0_12px_rgba(123,111,255,0.4)]"
           style={{
             background: 'linear-gradient(135deg, #7b6fff 0%, #5a53cc 100%)',
-            boxShadow: '0 0 0 1px rgba(123,111,255,0.3), 0 2px 8px rgba(0,0,0,0.4)',
+            boxShadow:  '0 0 0 1px rgba(123,111,255,0.3), 0 2px 8px rgba(0,0,0,0.4)',
           }}
           title="Account"
         >
@@ -136,6 +204,14 @@ function IconBtn({ onClick, title, active, children }: {
 }
 
 /* ── Icons ───────────────────────────────────────────────── */
+function ChevronRight() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" fill="none"
+         stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round">
+      <path d="M3.5 2l3 3-3 3"/>
+    </svg>
+  )
+}
 function CloseX() {
   return <svg viewBox="0 0 8 8" width="6" height="6" fill="none" stroke="rgba(0,0,0,0.6)" strokeWidth="1.3" strokeLinecap="round">
     <line x1="2" y1="2" x2="6" y2="6"/><line x1="6" y1="2" x2="2" y2="6"/>

@@ -230,7 +230,7 @@ function CortexApp() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-cx-bg text-cx-text">
-      <TitleBar />
+      <TitleBar onOpenSettings={() => setSettingsOpen(true)} />
       <div className="flex-1 flex overflow-hidden min-h-0">
         <LeftSidebar
           onOpenSettings={() => setSettingsOpen(true)}
@@ -239,7 +239,7 @@ function CortexApp() {
         />
         {isHome ? (
           <ErrorBoundary label="Home Dashboard">
-            <div key="home" className="flex-1 min-w-0 h-full flex flex-col animate-page-in">
+            <div key="home" className="flex-1 min-w-0 min-h-0 flex flex-col animate-page-in">
               <HomeDashboard />
             </div>
           </ErrorBoundary>

@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { EmptyState, EmptyIcons } from '@/components/ui/EmptyState'
 import { useSearchStore } from '@/stores/search.store'
 import { useVaultStore } from '@/stores/vault.store'
 import { useNodeStore } from '@/stores/node.store'
@@ -56,9 +57,12 @@ export function SearchPanel() {
               {results.total} results · {results.tookMs}ms
             </div>
             {results.items.length === 0 ? (
-              <div className="p-4 text-center text-xs text-cx-text-muted">
-                No results for "{query}"
-              </div>
+              <EmptyState
+                size="sm"
+                icon={<EmptyIcons.Search />}
+                title="No results"
+                body={`Nothing matched "${query}"`}
+              />
             ) : (
               <ul className="divide-y divide-cx-border/30">
                 {results.items.map(hit => (
@@ -93,14 +97,12 @@ export function SearchPanel() {
             )}
           </>
         ) : (
-          <div className="p-6 text-center">
-            <p className="text-xs text-cx-text-muted">
-              Search across nodes, parameters, documentation, and notes.
-            </p>
-            <p className="text-[11px] text-cx-text-muted mt-2 opacity-60">
-              Under 50ms · Powered by SQLite FTS5
-            </p>
-          </div>
+          <EmptyState
+            size="sm"
+            icon={<EmptyIcons.Search />}
+            title="Search everything"
+            body="Nodes, parameters, tags, notes — under 50ms"
+          />
         )}
       </div>
     </div>
