@@ -9,6 +9,8 @@ import { useGraphStore } from '@/stores/graph.store'
 import { NodeService } from '@/services/node.service'
 import type { AiProvider } from '@/types'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { check as checkForUpdate } from '@tauri-apps/plugin-updater'
+import { relaunch } from '@tauri-apps/plugin-process'
 import { OS, OS_LABELS, getModKey, isMac } from '@/utils/platform'
 
 type Section =
@@ -17,7 +19,7 @@ type Section =
   | 'ai'
   | 'analytics' | 'recipes' | 'templates' | 'media' | 'bookmarks'
   | 'bridge' | 'data' | 'trash'
-  | 'appmode'
+  | 'appmode' | 'updates'
 
 interface NavGroup {
   label: string
@@ -65,6 +67,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'bridge', label: 'Bridge',  icon: <BridgeIcon />,  desc: 'Import settings' },
       { id: 'data',   label: 'Library', icon: <DataIcon />,    desc: 'Export, reseed, danger' },
       { id: 'trash',  label: 'Trash',   icon: <TrashIcon />,   desc: 'Auto-empty, retention' },
+      { id: 'updates', label: 'Updates',  icon: <UpdatesIcon />, desc: 'Version, check for updates' },
     ],
   },
 ]
@@ -865,6 +868,11 @@ export function SettingsPanel({ onClose }: Props) {
               </>
             )}
 
+
+            {section === 'updates' && (
+              <UpdatesSection />
+            )}
+
           </div>
         </div>
       </div>
@@ -1058,6 +1066,162 @@ function ComingSoon({ label, desc, color }: { label: string; desc: string; color
 }
 
 /* ── Icons ───────────────────────────────────────────────── */
+
+/* ── Updates section ────────────────────────────────────── */
+type UpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'error'
+
+function UpdatesSection() {
+  const [status, setStatus] = useState<UpdateStatus>('idle')
+  const [updateInfo, setUpdateInfo] = useState<{ version: string; date?: string; body?: string } | null>(null)
+  const [progress, setProgress] = useState(0)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [updateObj, setUpdateObj] = useState<any>(null)
+
+  const handleCheck = async () => {
+    setStatus('checking')
+    setErrorMsg(null)
+    setUpdateInfo(null)
+    try {
+      const update = await checkForUpdate()
+      if (update?.available) {
+        setUpdateObj(update)
+        setUpdateInfo({ version: update.version, date: update.date, body: update.body ?? undefined })
+        setStatus('available')
+      } else {
+        setStatus('up-to-date')
+      }
+    } catch (e) {
+      setErrorMsg(String(e))
+      setStatus('error')
+    }
+  }
+
+  const handleInstall = async () => {
+    if (!updateObj) return
+    setStatus('downloading')
+    setProgress(0)
+    try {
+      let downloaded = 0
+      let total = 0
+      await updateObj.downloadAndInstall((evt: any) => {
+        if (evt.event === 'Started') { total = evt.data.contentLength ?? 0 }
+        if (evt.event === 'Progress') {
+          downloaded += evt.data.chunkLength ?? 0
+          setProgress(total > 0 ? Math.round((downloaded / total) * 100) : 50)
+        }
+      })
+      await relaunch()
+    } catch (e) {
+      setErrorMsg(String(e))
+      setStatus('error')
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Current version card */}
+      <div className="rounded-xl px-4 py-3 flex items-center justify-between"
+        style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div>
+          <div className="text-[11px] font-semibold" style={{ color: 'rgba(234,234,248,0.8)' }}>CORTEX</div>
+          <div className="text-[10px] mt-0.5 font-mono" style={{ color: 'rgba(234,234,248,0.35)' }}>v0.3.5</div>
+        </div>
+        {status === 'up-to-date' && (
+          <div className="text-[10px] px-2 py-1 rounded-full font-medium"
+            style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', color: '#34d399' }}>
+            Up to date
+          </div>
+        )}
+      </div>
+
+      {/* Check / status */}
+      {status === 'idle' || status === 'up-to-date' || status === 'error' ? (
+        <button
+          onClick={handleCheck}
+          className="w-full py-2 rounded-xl text-[12px] font-medium transition-all"
+          style={{ background: 'rgba(123,111,255,0.12)', border: '1px solid rgba(123,111,255,0.25)', color: 'rgba(180,170,255,0.9)' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(123,111,255,0.2)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(123,111,255,0.12)' }}
+        >
+          Check for Updates
+        </button>
+      ) : status === 'checking' ? (
+        <div className="w-full py-2 rounded-xl text-[12px] text-center animate-pulse"
+          style={{ background: 'rgba(123,111,255,0.07)', border: '1px solid rgba(123,111,255,0.15)', color: 'rgba(123,111,255,0.6)' }}>
+          Checking…
+        </div>
+      ) : status === 'downloading' ? (
+        <div className="space-y-2">
+          <div className="w-full py-2 rounded-xl text-[12px] text-center"
+            style={{ background: 'rgba(123,111,255,0.07)', border: '1px solid rgba(123,111,255,0.15)', color: 'rgba(123,111,255,0.6)' }}>
+            Downloading… {progress}%
+          </div>
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, background: 'var(--cx-accent)' }} />
+          </div>
+        </div>
+      ) : null}
+
+      {/* Error */}
+      {status === 'error' && errorMsg && (
+        <div className="text-[10px] px-3 py-2 rounded-lg leading-relaxed"
+          style={{ background: 'rgba(248,113,113,0.07)', border: '1px solid rgba(248,113,113,0.2)', color: '#f87171' }}>
+          {errorMsg}
+        </div>
+      )}
+
+      {/* Update available */}
+      {status === 'available' && updateInfo && (
+        <div className="space-y-3">
+          <div className="rounded-xl px-4 py-3 space-y-2"
+            style={{ background: 'rgba(52,211,153,0.05)', border: '1px solid rgba(52,211,153,0.2)' }}>
+            <div className="flex items-center justify-between">
+              <div className="text-[12px] font-semibold" style={{ color: '#34d399' }}>
+                v{updateInfo.version} available
+              </div>
+              {updateInfo.date && (
+                <div className="text-[10px]" style={{ color: 'rgba(234,234,248,0.3)' }}>
+                  {new Date(updateInfo.date).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+            {updateInfo.body && (
+              <div className="text-[10px] leading-relaxed whitespace-pre-wrap"
+                style={{ color: 'rgba(234,234,248,0.45)', maxHeight: 120, overflow: 'auto' }}>
+                {updateInfo.body}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={handleInstall}
+            className="w-full py-2 rounded-xl text-[12px] font-medium transition-all"
+            style={{ background: 'rgba(52,211,153,0.15)', border: '1px solid rgba(52,211,153,0.3)', color: '#34d399' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(52,211,153,0.25)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(52,211,153,0.15)' }}
+          >
+            Download & Install
+          </button>
+        </div>
+      )}
+
+      {/* Auto-update note */}
+      <p className="text-[10px] leading-relaxed" style={{ color: 'rgba(80,80,130,0.6)' }}>
+        CORTEX checks for updates automatically on launch. Updates are signed and verified before install.
+      </p>
+    </div>
+  )
+}
+
+function UpdatesIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 3v6M5 6l3-3 3 3"/>
+      <path d="M3 11h10"/>
+      <path d="M3 13.5h10" strokeOpacity="0.4"/>
+    </svg>
+  )
+}
+
 function ProfileIcon() {
   return (
     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
