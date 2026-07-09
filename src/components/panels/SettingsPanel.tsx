@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSettingsStore } from '@/stores/settings.store'
 import { useAiStore } from '@/stores/ai.store'
 import { useUiStore } from '@/stores/ui.store'
@@ -9,6 +9,7 @@ import { useGraphStore } from '@/stores/graph.store'
 import { NodeService } from '@/services/node.service'
 import type { AiProvider } from '@/types'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { getVersion } from '@tauri-apps/api/app'
 import { check as checkForUpdate } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { OS, OS_LABELS, getModKey, isMac } from '@/utils/platform'
@@ -113,6 +114,8 @@ interface Props { onClose: () => void }
 
 export function SettingsPanel({ onClose }: Props) {
   const [section, setSection] = useState<Section>('appearance')
+  const [appVersion, setAppVersion] = useState('...')
+  useEffect(() => { getVersion().then(setAppVersion) }, [])
   const s = useSettingsStore()
   const { provider, apiKey, model, setProvider } = useAiStore()
   const { addToast, rightPanelOpen, toggleRightPanel } = useUiStore()
@@ -229,7 +232,7 @@ export function SettingsPanel({ onClose }: Props) {
             </button>
             <div className="flex items-center justify-between px-1 pb-1">
               <span className="text-[9px] font-bold tracking-widest uppercase" style={{ color: 'rgba(90,90,140,0.5)' }}>CORTEX</span>
-              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded" style={{ background: 'rgba(123,111,255,0.08)', color: 'rgba(123,111,255,0.5)', border: '1px solid rgba(123,111,255,0.12)' }}>v0.3.2</span>
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded" style={{ background: 'rgba(123,111,255,0.08)', color: 'rgba(123,111,255,0.5)', border: '1px solid rgba(123,111,255,0.12)' }}>v{appVersion}</span>
             </div>
           </div>
         </div>
@@ -1071,6 +1074,8 @@ function ComingSoon({ label, desc, color }: { label: string; desc: string; color
 type UpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'error'
 
 function UpdatesSection() {
+  const [appVersion, setAppVersion] = useState('...')
+  useEffect(() => { getVersion().then(setAppVersion) }, [])
   const [status, setStatus] = useState<UpdateStatus>('idle')
   const [updateInfo, setUpdateInfo] = useState<{ version: string; date?: string; body?: string } | null>(null)
   const [progress, setProgress] = useState(0)
@@ -1124,7 +1129,7 @@ function UpdatesSection() {
         style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
         <div>
           <div className="text-[11px] font-semibold" style={{ color: 'rgba(234,234,248,0.8)' }}>CORTEX</div>
-          <div className="text-[10px] mt-0.5 font-mono" style={{ color: 'rgba(234,234,248,0.35)' }}>v0.3.5</div>
+          <div className="text-[10px] mt-0.5 font-mono" style={{ color: 'rgba(234,234,248,0.35)' }}>v{appVersion}</div>
         </div>
         {status === 'up-to-date' && (
           <div className="text-[10px] px-2 py-1 rounded-full font-medium"
