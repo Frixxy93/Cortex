@@ -1,10 +1,14 @@
 import { useRef, useEffect, useState } from 'react'
 import { useAiStore } from '@/stores/ai.store'
+import { useVaultStore } from '@/stores/vault.store'
+import { useGraphStore } from '@/stores/graph.store'
 import { CortexLogo } from '@/components/ui/CortexLogo'
 import { cn } from '@/utils/cn'
 
 export function AICopilot() {
   const { messages, isStreaming, sendMessage, clearMessages } = useAiStore()
+  const activeVault = useVaultStore(s => s.vaults.find(v => v.id === s.activeVaultId))
+  const activeGraph = useGraphStore(s => s.activeGraph())
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -47,13 +51,28 @@ export function AICopilot() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {messages.length === 0 ? (
-          <div className="text-center pt-4">
-            <div className="text-3xl opacity-20 mb-3">🧠</div>
-            <p className="text-xs text-cx-text-muted">
-              Ask me about any node, workflow, or technique.
-            </p>
-            <div className="mt-4 space-y-1.5">
-              {SUGGESTIONS.map(s => (
+          <div className="pt-3">
+            {/* Context badge */}
+            {(activeVault || activeGraph) && (
+              <div className="mb-3 rounded-lg px-2.5 py-2 text-[10px] leading-relaxed"
+                style={{ background: 'rgba(123,111,255,0.06)', border: '1px solid rgba(123,111,255,0.12)', color: 'rgba(180,170,255,0.6)' }}>
+                <span style={{ color: 'rgba(180,170,255,0.9)', fontWeight: 600 }}>Context:</span>
+                {activeVault && <span> {activeVault.name}</span>}
+                {activeGraph && <span> · {activeGraph.name} ({activeGraph.nodes?.length ?? 0} nodes)</span>}
+              </div>
+            )}
+            <div className="text-center mb-3">
+              <div className="text-3xl opacity-20 mb-2">🧠</div>
+              <p className="text-xs text-cx-text-muted">
+                Ask me about any node, workflow, or technique.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              {(activeGraph?.tags?.includes('nuke') ? NUKE_SUGGESTIONS
+                : activeGraph?.tags?.includes('simulation') ? SIM_SUGGESTIONS
+                : activeGraph?.tags?.includes('rigging') ? RIG_SUGGESTIONS
+                : SUGGESTIONS
+              ).map(s => (
                 <button
                   key={s}
                   onClick={() => { setInput(s) }}
@@ -138,5 +157,23 @@ const SUGGESTIONS = [
   'How do I create smoke in Houdini?',
   'What nodes are used for destruction effects?',
   'Explain the Pyro Solver parameters',
-  'How do wire nodes connect in VOP?',
+  'How do VOP wire nodes connect?',
+]
+const SIM_SUGGESTIONS = [
+  'What are the key parameters on the Pyro Solver?',
+  'How do I add a fuel source to my pyro sim?',
+  'Explain the difference between density and heat',
+  'How do I cache this simulation efficiently?',
+]
+const RIG_SUGGESTIONS = [
+  'How does KineFX IK differ from the old rigging tools?',
+  'What is the Blend Shapes node and when to use it?',
+  'How do I set up a full-body IK rig in KineFX?',
+  'What are control points in KineFX?',
+]
+const NUKE_SUGGESTIONS = [
+  'What is the difference between Merge and KeyMix?',
+  'How do I grade a shot to match another plate?',
+  'Explain the Nuke crop vs reformat node',
+  'What nodes handle motion blur in comp?',
 ]

@@ -149,6 +149,7 @@ pub fn run() {
             commands::analytics::track_event,
             // AI
             commands::ai::ai_chat,
+            commands::ai::ai_stream,
             // Import
             commands::import::import_file,
             // VFX Bridge

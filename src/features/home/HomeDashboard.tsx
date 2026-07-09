@@ -78,19 +78,36 @@ const SOFTWARES: Record<string, { icon: string; color: string }> = {
   maya:      { icon: '🧊', color: '#fbbf24' },
 }
 
-function VaultCard({ vault, graphCount, nodeCount, onClick }: {
+function VaultCard({ vault, graphCount, nodeCount, onClick, onRename }: {
   vault: import('@/types/vault').Vault
   graphCount: number
   nodeCount: number
   onClick: () => void
+  onRename: (id: string, name: string) => void
 }) {
   const sw    = vault.settings?.defaultSoftware
   const meta  = sw ? SOFTWARES[sw] : null
   const color = meta?.color ?? vault.color ?? '#7b6fff'
+  const [editing, setEditing] = useState(false)
+  const [draftName, setDraftName] = useState(vault.name)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const startEdit = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setDraftName(vault.name)
+    setEditing(true)
+    setTimeout(() => inputRef.current?.select(), 0)
+  }
+  const commitEdit = () => {
+    const trimmed = draftName.trim()
+    if (trimmed && trimmed !== vault.name) onRename(vault.id, trimmed)
+    setEditing(false)
+  }
 
   return (
     <button
       onClick={onClick}
+      onDoubleClick={startEdit}
       className="group relative flex flex-col p-4 rounded-2xl border border-cx-border
                  hover:border-cx-accent/40 transition-all duration-200 text-left
                  hover:scale-[1.02] active:scale-[0.99]"
@@ -107,8 +124,35 @@ function VaultCard({ vault, graphCount, nodeCount, onClick }: {
       </div>
 
       {/* Name */}
-      <div className="text-[13px] font-semibold text-cx-text group-hover:text-cx-accent transition-colors truncate">
-        {vault.name}
+      <div className="relative">
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={draftName}
+            onChange={e => setDraftName(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditing(false) }}
+            onClick={e => e.stopPropagation()}
+            className="w-full text-[13px] font-semibold rounded px-1 outline-none"
+            style={{ background: 'rgba(123,111,255,0.12)', border: '1px solid rgba(123,111,255,0.4)', color: 'var(--cx-text)', caretColor: 'var(--cx-accent)' }}
+          />
+        ) : (
+          <div className="text-[13px] font-semibold text-cx-text group-hover:text-cx-accent transition-colors truncate pr-5">
+            {vault.name}
+          </div>
+        )}
+        {!editing && (
+          <button
+            onClick={startEdit}
+            className="absolute right-0 top-0.5 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity"
+            title="Rename vault"
+          >
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1.5 8.5h2L8 3l-2-2-4.5 4.5v2z"/>
+              <path d="M9.5 9H1.5" strokeOpacity="0.4"/>
+            </svg>
+          </button>
+        )}
       </div>
       {vault.description && (
         <div className="text-[11px] text-cx-text-muted truncate mt-0.5">{vault.description}</div>
@@ -273,7 +317,7 @@ function RecentGraphRow({ graph, active, onClick }: {
 
 /* ── Main dashboard ────────────────────────────────────── */
 export function HomeDashboard() {
-  const { vaults, setActiveVault, isLoading: vaultsLoading, deleteVault } = useVaultStore()
+  const { vaults, setActiveVault, isLoading: vaultsLoading, deleteVault, updateVault } = useVaultStore()
   const { graphs, byVault, setActiveGraph, activeGraphId } = useGraphStore()
   const getVaultNodes = useNodeStore(s => s.getVaultNodes)
   const { setActiveNav, openCommandPalette } = useUiStore()
@@ -431,7 +475,7 @@ export function HomeDashboard() {
                           { kind: 'separator' },
                           { kind: 'item', label: 'Delete', icon: <VCTrashIcon />, danger: true, onClick: () => handleDeleteVault(vault.id, vault.name) },
                         ] satisfies MenuItemDef[])}>
-                          <VaultCard vault={vault} graphCount={byVault[vault.id]?.length ?? 0} nodeCount={getVaultNodes(vault.id).length} onClick={() => handleSelectVault(vault.id)} />
+                          <VaultCard vault={vault} graphCount={byVault[vault.id]?.length ?? 0} nodeCount={getVaultNodes(vault.id).length} onClick={() => handleSelectVault(vault.id)} onRename={(id, name) => updateVault({ id, name })} />
                         </div>
                       ))
                   }

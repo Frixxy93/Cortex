@@ -8,11 +8,38 @@ import { useGraphStore } from '@/stores/graph.store'
 import { useUiStore } from '@/stores/ui.store'
 import { NodeCreateModal } from '@/components/panels/NodeCreateModal'
 import { cn } from '@/utils/cn'
-import { CATEGORY_COLORS, NODE_OBJECT_TYPE_ICONS } from '@/utils/constants'
+import { CATEGORY_COLORS, NODE_OBJECT_TYPE_ICONS, SOFTWARE_COLORS } from '@/utils/constants'
 import { nanoid } from 'nanoid'
 import type { CortexNode, GraphNode } from '@/types'
 import { NodeDetail } from '@/features/node/NodeDetail'
 import { NodeBulkActions } from '@/features/node/NodeBulkActions'
+
+/* ── Software detection ──────────────────────────────── */
+const HOUDINI_CATS = new Set(['sop','dop','cop','vop','lop','rop','chop','top','object'])
+const NUKE_CATS    = new Set(['color','filter','merge','transform','channel','draw','deep'])
+const BLENDER_CATS = new Set(['geometry','shader','compositor'])
+const MAYA_CATS    = new Set(['animation','material'])
+
+type SoftwareTab = 'all' | 'houdini' | 'nuke' | 'blender' | 'maya' | 'other'
+
+function detectSoftware(node: import('@/types').CortexNode): SoftwareTab {
+  const tags = node.tags.map(t => t.toLowerCase())
+  if (tags.includes('houdini') || HOUDINI_CATS.has(node.category)) return 'houdini'
+  if (tags.includes('nuke')    || NUKE_CATS.has(node.category))    return 'nuke'
+  if (tags.includes('blender') || BLENDER_CATS.has(node.category)) return 'blender'
+  if (tags.includes('maya')    || MAYA_CATS.has(node.category))    return 'maya'
+  if (tags.includes('unreal') || tags.includes('ue5') || tags.includes('unrealengine')) return 'other'
+  return 'other'
+}
+
+const SW_TABS: { id: SoftwareTab; label: string; color: string }[] = [
+  { id: 'all',     label: 'All',     color: '#888aaa' },
+  { id: 'houdini', label: 'Houdini', color: SOFTWARE_COLORS.houdini },
+  { id: 'nuke',    label: 'Nuke',    color: SOFTWARE_COLORS.nuke    },
+  { id: 'blender', label: 'Blender', color: SOFTWARE_COLORS.blender },
+  { id: 'maya',    label: 'Maya',    color: SOFTWARE_COLORS.maya    },
+  { id: 'other',   label: 'Other',   color: '#6C63FF'               },
+]
 
 export function LibraryPanel() {
   const { } = useVaultStore()
@@ -22,6 +49,7 @@ export function LibraryPanel() {
   const { menu: ctxMenu, open: openCtx, close: closeCtx } = useContextMenu()
 
   const [filter, setFilter] = useState('')
+  const [activeSw, setActiveSw] = useState<SoftwareTab>('all')
 
   // Sync tag filter from sidebar
   useEffect(() => {
@@ -33,11 +61,17 @@ export function LibraryPanel() {
 
   const nodes = getAllNodes()
   const filtered = nodes.filter(n => {
+    if (activeSw !== 'all' && detectSoftware(n) !== activeSw) return false
     const q = filter.toLowerCase()
     if (q && !n.displayName.toLowerCase().includes(q) && !n.name.toLowerCase().includes(q) && !n.tags.some(t => t.toLowerCase().includes(q))) return false
     if (activeTagFilter && !n.tags.includes(activeTagFilter)) return false
     return true
   })
+  const swCounts = SW_TABS.reduce<Record<SoftwareTab, number>>((acc, t) => {
+    acc[t.id] = t.id === 'all' ? nodes.length : nodes.filter(n => detectSoftware(n) === t.id).length
+    return acc
+  }, {} as Record<SoftwareTab, number>)
+
   const groups = filtered.reduce<Record<string, CortexNode[]>>((acc, node) => {
     ;(acc[node.category] ??= []).push(node)
     return acc
@@ -95,6 +129,25 @@ export function LibraryPanel() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Software tabs */}
+      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-cx-border flex-shrink-0 overflow-x-auto scrollbar-none">
+        {SW_TABS.filter(t => t.id === 'all' || swCounts[t.id] > 0).map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveSw(tab.id)}
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium flex-shrink-0 transition-all"
+            style={{
+              background: activeSw === tab.id ? `${tab.color}22` : 'transparent',
+              border: `1px solid ${activeSw === tab.id ? tab.color + '44' : 'transparent'}`,
+              color: activeSw === tab.id ? tab.color : 'rgba(180,180,210,0.45)',
+            }}
+          >
+            {tab.label}
+            <span className="text-[9px] opacity-60">{swCounts[tab.id]}</span>
+          </button>
+        ))}
       </div>
 
       {/* Node list */}

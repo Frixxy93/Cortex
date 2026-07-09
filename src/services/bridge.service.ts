@@ -14,6 +14,8 @@ export interface ImportResult {
   edgesImported: number
   parametersImported: number
   warnings: string[]
+  nodeNames: string[]
+  graphName: string
 }
 
 export const BridgeService = {

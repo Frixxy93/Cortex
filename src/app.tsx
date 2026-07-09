@@ -11,6 +11,7 @@ import { GraphCanvas } from '@/components/canvas/GraphCanvas'
 import { useVaultStore } from '@/stores/vault.store'
 import { useNodeStore } from '@/stores/node.store'
 import { useGraphStore } from '@/stores/graph.store'
+import { useSettingsStore } from '@/stores/settings.store'
 import { useUiStore } from '@/stores/ui.store'
 import { useBridgeStore } from '@/stores/bridge.store'
 import { HomeDashboard } from '@/features/home/HomeDashboard'
@@ -143,6 +144,7 @@ function CortexApp() {
   const { loadVaults, activeVaultId, vaults } = useVaultStore()
   const { loadNodes } = useNodeStore()
   const { loadGraphs, setActiveGraph, saveGraph, undo, redo, activeGraph, addNode, activeGraphId } = useGraphStore()
+  const customShortcuts = useSettingsStore(s => s.customShortcuts)
   const { openCommandPalette, closeCommandPalette, setActiveNav, activeNavId, rightPanelOpen } = useUiStore()
   const { init: initBridge } = useBridgeStore()
 
@@ -195,11 +197,21 @@ function CortexApp() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey
-      if (meta && e.key === 'k') { e.preventDefault(); openCommandPalette(); return }
-      if (meta && e.key === 's') { e.preventDefault(); saveGraph(); return }
-      if (meta && e.key === ',') { e.preventDefault(); setSettingsOpen(s => !s); return }
+      // Helper: check if event matches a custom binding "Ctrl+K" style
+      const matchCustom = (id: string, defaultMeta: boolean, defaultShift: boolean, defaultKey: string) => {
+        const custom = customShortcuts[id]
+        if (!custom) return defaultMeta ? meta && (defaultShift ? e.shiftKey : !e.shiftKey) && e.key.toLowerCase() === defaultKey : e.key === defaultKey
+        const parts = custom.split('+').map((p: string) => p.trim())
+        const needMeta = parts.some((p: string) => p === 'Ctrl' || p === '⌘')
+        const needShift = parts.some((p: string) => p === '⇧')
+        const key = parts[parts.length - 1]
+        return (needMeta ? meta : true) && (needShift ? e.shiftKey : true) && e.key.toLowerCase() === key.toLowerCase()
+      }
+      if (matchCustom('palette', true, false, 'k')) { e.preventDefault(); openCommandPalette(); return }
+      if (matchCustom('save', true, false, 's')) { e.preventDefault(); saveGraph(); return }
+      if (matchCustom('settings', true, false, ',')) { e.preventDefault(); setSettingsOpen(s => !s); return }
       if (meta && e.shiftKey && e.key === 'z') { e.preventDefault(); redo(); return }
-      if (meta && e.key === 'z') { e.preventDefault(); undo(); return }
+      if (matchCustom('undo', true, false, 'z') && !e.shiftKey) { e.preventDefault(); undo(); return }
       if (meta && e.key === 'd') {
         e.preventDefault()
         const graph = activeGraph()

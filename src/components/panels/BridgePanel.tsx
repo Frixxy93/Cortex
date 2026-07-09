@@ -2,6 +2,9 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { useBridgeStore } from '@/stores/bridge.store'
 import { useAdminStore } from '@/stores/admin.store'
 import { NodeService } from '@/services/node.service'
+import { GraphService } from '@/services/graph.service'
+import { useVaultStore } from '@/stores/vault.store'
+import { useGraphStore } from '@/stores/graph.store'
 import { BridgeService } from '@/services/bridge.service'
 import type { ImportResult } from '@/services/bridge.service'
 
@@ -17,6 +20,8 @@ const SUPPORTED = Object.keys(SOFTWARE_META)
 export function BridgePanel({ onClose }: Props) {
   const { port, clients, detected, execCmds, imports, loading, scan, loadCmd } = useBridgeStore()
   const { isAdmin } = useAdminStore()
+  const { activeVaultId } = useVaultStore()
+  const { createGraph } = useGraphStore()
   const [copied, setCopied]   = useState<string | null>(null)
   const [cmdErr, setCmdErr]   = useState<Record<string, string>>({})
   const [seeding, setSeeding] = useState(false)
@@ -24,6 +29,7 @@ export function BridgePanel({ onClose }: Props) {
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [importing, setImporting] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [placingGraph, setPlacingGraph] = useState(false)
 
   // On open: scan for software + pre-load all exec commands
   useEffect(() => {
@@ -39,8 +45,8 @@ export function BridgePanel({ onClose }: Props) {
     setSeeding(true)
     setSeedMsg(null)
     try {
-      const count = await NodeService.generateSeed()
-      setSeedMsg(`✓ Seed written — ${count.toLocaleString()} nodes baked in. Rebuild to distribute.`)
+      const outPath = await NodeService.generateSeed()
+      setSeedMsg(`✓ Seed written → ${outPath}. Rebuild to distribute.`)
     } catch (e) {
       setSeedMsg(`✗ ${String(e)}`)
     } finally {
@@ -252,7 +258,7 @@ export function BridgePanel({ onClose }: Props) {
               if (!file) return
               const ext = file.name.split('.').pop()?.toLowerCase()
               if (!['nk','hip','hiplc','hipnc','blend','json'].includes(ext ?? '')) {
-                setImportResult({ nodesImported: 0, edgesImported: 0, parametersImported: 0, warnings: [`Unsupported file type: .${ext}`] })
+                setImportResult({ nodesImported: 0, edgesImported: 0, parametersImported: 0, warnings: [`Unsupported file type: .${ext}`], nodeNames: [], graphName: '' })
                 return
               }
               setImporting(true); setImportResult(null)
@@ -262,7 +268,7 @@ export function BridgePanel({ onClose }: Props) {
                 const result = await BridgeService.importFile(path)
                 setImportResult(result)
               } catch (e) {
-                setImportResult({ nodesImported: 0, edgesImported: 0, parametersImported: 0, warnings: [String(e)] })
+                setImportResult({ nodesImported: 0, edgesImported: 0, parametersImported: 0, warnings: [String(e)], nodeNames: [], graphName: '' })
               } finally { setImporting(false) }
             }}
             className="flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl text-center transition-all"
@@ -286,20 +292,133 @@ export function BridgePanel({ onClose }: Props) {
             )}
           </div>
           {importResult && (
-            <div className="mt-2 text-[10px] px-3 py-2 rounded-lg space-y-0.5"
-                 style={{
-                   background: importResult.warnings.length ? 'rgba(251,146,60,0.07)' : 'rgba(34,197,94,0.07)',
-                   border: `1px solid ${importResult.warnings.length ? 'rgba(251,146,60,0.2)' : 'rgba(34,197,94,0.2)'}`,
-                   color: importResult.warnings.length ? '#fb923c' : '#4ade80',
-                 }}>
-              <div className="font-medium">
-                {importResult.nodesImported} nodes · {importResult.edgesImported} edges · {importResult.parametersImported} params
+            <div className="mt-2 space-y-2">
+              <div className="text-[10px] px-3 py-2 rounded-lg space-y-0.5"
+                   style={{
+                     background: importResult.warnings.length ? 'rgba(251,146,60,0.07)' : 'rgba(34,197,94,0.07)',
+                     border: `1px solid ${importResult.warnings.length ? 'rgba(251,146,60,0.2)' : 'rgba(34,197,94,0.2)'}`,
+                     color: importResult.warnings.length ? '#fb923c' : '#4ade80',
+                   }}>
+                <div className="font-medium">
+                  {importResult.nodesImported} nodes · {importResult.edgesImported} edges · {importResult.parametersImported} params
+                </div>
+                {importResult.warnings.map((w, i) => (
+                  <div key={i} className="opacity-80">{w}</div>
+                ))}
               </div>
-              {importResult.warnings.map((w, i) => (
-                <div key={i} className="opacity-80">{w}</div>
-              ))}
+              {importResult.nodesImported > 0 && activeVaultId && (
+                <button
+                  onClick={async () => {
+                    if (!activeVaultId || placingGraph) return
+                    setPlacingGraph(true)
+                    try {
+                      const library = await NodeService.list(activeVaultId)
+                      const graphNodes: import('@/types/graph').GraphNode[] = []
+                      const graphEdges: import('@/types/graph').GraphEdge[] = []
+                      const COLS = 4
+                      const SPACING = { x: 220, y: 140 }
+
+                      importResult.nodeNames.forEach((name, idx) => {
+                        const lower = name.toLowerCase()
+                        const match = library.find(n =>
+                          n.name.toLowerCase() === lower ||
+                          n.name.toLowerCase().includes(lower) ||
+                          n.displayName?.toLowerCase().includes(lower)
+                        )
+                        if (!match) return
+                        const col = idx % COLS
+                        const row = Math.floor(idx / COLS)
+                        graphNodes.push({
+                          id: crypto.randomUUID(),
+                          nodeId: match.id,
+                          graphId: '',  // filled after create
+                          position: { x: col * SPACING.x + 60, y: row * SPACING.y + 60 },
+                          isCollapsed: false,
+                          zIndex: 0,
+                        })
+                      })
+
+                      // Wire sequential edges between matched nodes
+                      for (let i = 0; i < graphNodes.length - 1; i++) {
+                        graphEdges.push({
+                          id: crypto.randomUUID(),
+                          sourceNodeId: graphNodes[i].id,
+                          targetNodeId: graphNodes[i + 1].id,
+                          edgeType: 'data',
+                        })
+                      }
+
+                      const graph = await createGraph({
+                        vaultId: activeVaultId,
+                        name: importResult.graphName || 'Imported Graph',
+                        description: `Imported from ${importResult.graphName}`,
+                        tags: [],
+                      })
+
+                      const nodesWithGraph = graphNodes.map(n => ({ ...n, graphId: graph.id }))
+                      await GraphService.save({
+                        id: graph.id,
+                        nodes: nodesWithGraph,
+                        edges: graphEdges,
+                        frames: [],
+                        comments: [],
+                        viewport: { x: 0, y: 0, zoom: 1 },
+                      })
+                      useGraphStore.setState(s => {
+                        const g = s.graphs[graph.id]
+                        if (g) { g.nodes = nodesWithGraph; g.edges = graphEdges }
+                      })
+                      setImportResult(null)
+                      onClose()
+                    } catch (e) {
+                      console.error('Place on canvas failed:', e)
+                    } finally {
+                      setPlacingGraph(false)
+                    }
+                  }}
+                  disabled={placingGraph}
+                  className="w-full py-1.5 rounded-lg text-[11px] font-medium transition-all disabled:opacity-40"
+                  style={{ background: 'rgba(123,111,255,0.15)', border: '1px solid rgba(123,111,255,0.3)', color: 'rgba(180,170,255,0.9)' }}
+                >
+                  {placingGraph ? 'Creating graph…' : `Create graph from ${importResult.nodesImported} nodes`}
+                </button>
+              )}
             </div>
           )}
+        </div>
+
+        {/* ── DCC export instructions ── */}
+        <div className="px-4 pb-3 space-y-1.5">
+          {[
+            {
+              ext: '.nk',
+              label: 'Nuke',
+              color: '#34d399',
+              tip: 'Works natively — drop your .nk script directly.',
+            },
+            {
+              ext: '.hipnc',
+              label: 'Houdini (ASCII)',
+              color: '#ff6b35',
+              tip: 'Save as .hipnc (ASCII) in Houdini. Binary .hip requires hython export.',
+            },
+            {
+              ext: '.json',
+              label: 'Houdini / Blender',
+              color: '#a78bfa',
+              tip: 'Run the CORTEX export script in Houdini (hython) or Blender (Scripting), then drop the .json.',
+            },
+          ].map(({ ext, label, color, tip }) => (
+            <div key={ext} className="flex gap-2 items-start px-2.5 py-2 rounded-lg"
+                 style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <span className="text-[9px] font-bold mt-0.5 flex-shrink-0 rounded px-1 py-0.5"
+                    style={{ background: `${color}18`, color, border: `1px solid ${color}30` }}>{ext}</span>
+              <div>
+                <div className="text-[10px] font-medium mb-0.5" style={{ color: 'rgba(200,200,230,0.7)' }}>{label}</div>
+                <div className="text-[9px] leading-relaxed" style={{ color: 'rgba(140,140,170,0.5)' }}>{tip}</div>
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* ── Footer ── */}

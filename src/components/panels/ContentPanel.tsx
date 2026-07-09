@@ -380,7 +380,8 @@ function GraphDetailEditor({ graph, addToast }: {
 
   const save = async (patch: { description?: string; tags?: string[] }) => {
     const { GraphService } = await import('@/services/graph.service')
-    await GraphService.save({ id: graph.id, ...patch })
+    const updated = await GraphService.save({ id: graph.id, ...patch })
+    useGraphStore.getState().loadGraph(updated.id)
     addToast('Graph updated', { variant: 'success' })
   }
 

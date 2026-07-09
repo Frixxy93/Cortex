@@ -5,10 +5,12 @@ import {
   getBezierPath,
   type EdgeProps,
 } from '@xyflow/react'
+import { PORT_COLORS, inferPortType } from '@/utils/portTypes'
 
 export const CortexEdge = memo(function CortexEdge({
   id, sourceX, sourceY, targetX, targetY,
   sourcePosition, targetPosition,
+  sourceHandleId,
   label, selected,
 }: EdgeProps) {
   const [edgePath, labelX, labelY] = getBezierPath({
@@ -16,37 +18,43 @@ export const CortexEdge = memo(function CortexEdge({
     targetX, targetY, targetPosition,
   })
 
-  const gradientId = `edge-grad-${id}`
+  // Derive edge color from source port type
+  const portType = inferPortType(sourceHandleId ?? '')
+  const typeColor = PORT_COLORS[portType]
+
+  const baseColor   = selected ? typeColor : `${typeColor}55`
+  const glowColor   = selected ? `${typeColor}44` : 'transparent'
+  const strokeWidth = selected ? 2 : 1.5
+  const gradientId  = `edge-grad-${id}`
 
   return (
     <>
-      {/* SVG defs for gradient stroke */}
       <defs>
         <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%"   stopColor={selected ? '#60a5fa' : '#2a2a50'} stopOpacity={selected ? 0.9 : 0.7} />
-          <stop offset="100%" stopColor={selected ? '#a78bfa' : '#1a1a3a'} stopOpacity={selected ? 0.9 : 0.5} />
+          <stop offset="0%"   stopColor={baseColor} stopOpacity={selected ? 0.95 : 0.6} />
+          <stop offset="100%" stopColor={selected ? `${typeColor}bb` : `${typeColor}22`} stopOpacity={selected ? 0.9 : 0.4} />
         </linearGradient>
       </defs>
 
-      {/* Glow layer (selected only) */}
+      {/* Glow */}
       {selected && (
         <path
           d={edgePath}
           fill="none"
-          stroke="rgba(123,111,255,0.25)"
-          strokeWidth={6}
+          stroke={glowColor}
+          strokeWidth={7}
           strokeLinecap="round"
-          style={{ filter: 'blur(3px)' }}
+          style={{ filter: 'blur(4px)' }}
         />
       )}
 
-      {/* Main edge path */}
+      {/* Main line */}
       <BaseEdge
         id={id}
         path={edgePath}
         style={{
           stroke: `url(#${gradientId})`,
-          strokeWidth: selected ? 2 : 1.5,
+          strokeWidth,
           strokeLinecap: 'round',
           transition: 'stroke-width 0.15s',
         }}
@@ -57,16 +65,14 @@ export const CortexEdge = memo(function CortexEdge({
         <EdgeLabelRenderer>
           <div
             className="absolute pointer-events-all"
-            style={{
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            }}
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)` }}
           >
             <span
               className="text-[10px] px-1.5 py-0.5 rounded"
               style={{
                 background: 'rgba(7,7,18,0.9)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                color: 'rgba(234,234,248,0.5)',
+                border: `1px solid ${typeColor}33`,
+                color: `${typeColor}cc`,
                 backdropFilter: 'blur(8px)',
               }}
             >

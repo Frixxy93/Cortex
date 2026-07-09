@@ -37,6 +37,13 @@ export interface SettingsState {
   // Media
   mediaFolder: string
 
+  // Shortcuts (id → key combo override)
+  customShortcuts: Record<string, string>
+
+  // Bridge
+  bridgeAutoDetect: boolean
+  bridgePreviewImport: boolean
+
   // Trash
   trashAutoEmpty: boolean
   trashRetentionDays: 7 | 14 | 30 | 90
@@ -77,6 +84,11 @@ const DEFAULTS = {
   analyticsEnabled: true,
   analyticsRetention: 30 as const,
   mediaFolder: '',
+  customShortcuts: {} as Record<string, string>,
+
+  bridgeAutoDetect: true,
+  bridgePreviewImport: true,
+
   trashAutoEmpty: false,
   trashRetentionDays: 30 as const,
   profileName: 'Artist',

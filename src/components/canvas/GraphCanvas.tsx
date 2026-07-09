@@ -15,8 +15,10 @@ import {
   type EdgeTypes,
   type OnNodesChange,
   type OnEdgesChange,
+  type IsValidConnection,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { isCompatible, inferPortType } from '@/utils/portTypes'
 
 import { useSettingsStore } from '@/stores/settings.store'
 
@@ -72,6 +74,15 @@ export function GraphCanvas() {
   useEffect(() => { setNodes(rfNodes) }, [graph?.nodes])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setEdges(rfEdges) }, [graph?.edges])
+
+  const isValidConnection: IsValidConnection = useCallback((connection) => {
+    // Allow connections where port types are compatible
+    const { sourceHandle, targetHandle } = connection
+    if (!sourceHandle || !targetHandle) return true // no port info → allow
+    const fromType = inferPortType(sourceHandle.split('__')[0] ?? sourceHandle)
+    const toType   = inferPortType(targetHandle.split('__')[0] ?? targetHandle)
+    return isCompatible(fromType, toType)
+  }, [])
 
   const onConnect: OnConnect = useCallback((connection) => {
     storeAddEdge({
@@ -183,6 +194,7 @@ export function GraphCanvas() {
             nodes={nodes} edges={edges}
             onNodesChange={handleNodesChange} onEdgesChange={handleEdgesChange}
             onConnect={onConnect}
+            isValidConnection={isValidConnection}
             nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES}
             snapToGrid={snapSetting} snapGrid={GRAPH_DEFAULTS.snapGrid}
             minZoom={GRAPH_DEFAULTS.minZoom} maxZoom={GRAPH_DEFAULTS.maxZoom}

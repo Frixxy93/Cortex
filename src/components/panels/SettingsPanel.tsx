@@ -89,20 +89,21 @@ const AI_PROVIDERS: { id: AiProvider; label: string; models: string[] }[] = [
 ]
 
 const SHORTCUTS = [
-  { keys: ['⌘', 'K'],       label: 'Command palette',      category: 'Global' },
-  { keys: ['⌘', 'S'],       label: 'Save graph',            category: 'Global' },
-  { keys: ['⌘', 'Z'],       label: 'Undo',                  category: 'Global' },
-  { keys: ['⌘', '⇧', 'Z'],  label: 'Redo',                  category: 'Global' },
-  { keys: ['Esc'],           label: 'Close panel / palette', category: 'Global' },
-  { keys: ['⌘', 'D'],       label: 'Duplicate node',        category: 'Canvas' },
-  { keys: ['Del'],           label: 'Delete selected node',  category: 'Canvas' },
-  { keys: ['⇧', 'Click'],   label: 'Multi-select nodes',    category: 'Canvas' },
-  { keys: ['Space'],         label: 'Pan canvas',            category: 'Canvas' },
-  { keys: ['⌘', '='],       label: 'Zoom in',               category: 'Canvas' },
-  { keys: ['⌘', '-'],       label: 'Zoom out',              category: 'Canvas' },
-  { keys: ['⌘', '0'],       label: 'Fit to view',           category: 'Canvas' },
-  { keys: ['⌘', 'F'],       label: 'Focus search',          category: 'Search' },
-  { keys: ['⌘', 'N'],       label: 'New graph',             category: 'Canvas' },
+  { id: 'palette',   keys: ['⌘', 'K'],       label: 'Command palette',      category: 'Global', rebindable: true  },
+  { id: 'save',      keys: ['⌘', 'S'],       label: 'Save graph',            category: 'Global', rebindable: true  },
+  { id: 'undo',      keys: ['⌘', 'Z'],       label: 'Undo',                  category: 'Global', rebindable: false },
+  { id: 'redo',      keys: ['⌘', '⇧', 'Z'],  label: 'Redo',                  category: 'Global', rebindable: false },
+  { id: 'close',     keys: ['Esc'],           label: 'Close panel / palette', category: 'Global', rebindable: false },
+  { id: 'settings',  keys: ['⌘', ','],        label: 'Open settings',         category: 'Global', rebindable: true  },
+  { id: 'duplicate', keys: ['⌘', 'D'],        label: 'Duplicate node',        category: 'Canvas', rebindable: true  },
+  { id: 'delete',    keys: ['Del'],            label: 'Delete selected node',  category: 'Canvas', rebindable: false },
+  { id: 'multisel',  keys: ['⇧', 'Click'],    label: 'Multi-select nodes',    category: 'Canvas', rebindable: false },
+  { id: 'pan',       keys: ['Space'],          label: 'Pan canvas',            category: 'Canvas', rebindable: false },
+  { id: 'zoomin',    keys: ['⌘', '='],        label: 'Zoom in',               category: 'Canvas', rebindable: false },
+  { id: 'zoomout',   keys: ['⌘', '-'],        label: 'Zoom out',              category: 'Canvas', rebindable: false },
+  { id: 'fitview',   keys: ['⌘', '0'],        label: 'Fit to view',           category: 'Canvas', rebindable: true  },
+  { id: 'search',    keys: ['⌘', 'F'],        label: 'Focus search',          category: 'Search', rebindable: true  },
+  { id: 'newgraph',  keys: ['⌘', 'N'],        label: 'New graph',             category: 'Canvas', rebindable: true  },
 ]
 
 interface Props { onClose: () => void }
@@ -127,6 +128,7 @@ export function SettingsPanel({ onClose }: Props) {
   const [deletingVault,      setDeletingVault]      = useState(false)
   const [resetConfirm,    setResetConfirm]    = useState(false)
   const [scSearch,        setScSearch]        = useState('')
+  const [recording,       setRecording]       = useState<string | null>(null)
   const [mediaPath,       setMediaPath]       = useState(s.mediaFolder)
   const modKey = getModKey(s.cmdKey)
 
@@ -391,17 +393,73 @@ export function SettingsPanel({ onClose }: Props) {
                   <div key={cat} className="space-y-0.5">
                     <div className="text-[9px] font-bold uppercase tracking-[0.12em] px-1 mb-2" style={{ color: 'rgba(80,80,130,0.7)' }}>{cat}</div>
                     <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(18,18,46,0.8)' }}>
-                      {filteredShortcuts.filter(sc => sc.category === cat).map((sc, i, arr) => (
-                        <div key={i} className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(14,14,38,0.8)' : 'none', background: i % 2 === 0 ? 'rgba(14,14,34,0.3)' : 'rgba(8,8,22,0.3)' }}>
-                          <span className="text-[12px]" style={{ color: 'rgba(180,180,220,0.8)' }}>{sc.label}</span>
-                          <div className="flex items-center gap-1">
-                            {sc.keys.map((k, j) => {
-                              const display = k === '⌘' ? modKey : k
-                              return <kbd key={j} className="inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[10px] font-mono font-medium min-w-[1.75rem]" style={{ background: 'rgba(14,14,34,0.9)', border: '1px solid rgba(40,40,80,0.9)', boxShadow: '0 1px 0 rgba(0,0,0,0.5)', color: 'rgba(160,160,220,0.9)' }}>{display}</kbd>
-                            })}
+                      {filteredShortcuts.filter(sc => sc.category === cat).map((sc, i, arr) => {
+                        const custom = s.customShortcuts[sc.id]
+                        const isRecording = recording === sc.id
+                        const displayKeys = custom ? [custom] : sc.keys
+                        return (
+                          <div key={i}
+                            className="flex items-center justify-between px-4 py-2.5 group"
+                            style={{ borderBottom: i < arr.length - 1 ? '1px solid rgba(14,14,38,0.8)' : 'none', background: isRecording ? 'rgba(123,111,255,0.08)' : i % 2 === 0 ? 'rgba(14,14,34,0.3)' : 'rgba(8,8,22,0.3)' }}
+                          >
+                            <span className="text-[12px]" style={{ color: 'rgba(180,180,220,0.8)' }}>{sc.label}</span>
+                            <div className="flex items-center gap-1.5">
+                              {isRecording ? (
+                                <span
+                                  className="text-[10px] px-2 py-1 rounded-lg animate-pulse"
+                                  style={{ background: 'rgba(123,111,255,0.15)', border: '1px solid rgba(123,111,255,0.3)', color: 'rgba(180,170,255,0.9)' }}
+                                  onKeyDown={e => {
+                                    e.preventDefault(); e.stopPropagation()
+                                    if (e.key === 'Escape') { setRecording(null); return }
+                                    const parts: string[] = []
+                                    if (e.metaKey || e.ctrlKey) parts.push(modKey)
+                                    if (e.shiftKey) parts.push('⇧')
+                                    if (e.altKey) parts.push('⌥')
+                                    const k = e.key.length === 1 ? e.key.toUpperCase() : e.key
+                                    if (!['Meta','Control','Shift','Alt'].includes(k)) parts.push(k)
+                                    if (parts.length) {
+                                      s.set({ customShortcuts: { ...s.customShortcuts, [sc.id]: parts.join('+') } })
+                                      setRecording(null)
+                                    }
+                                  }}
+                                  tabIndex={0}
+                                  autoFocus
+                                  onBlur={() => setRecording(null)}
+                                >
+                                  Press keys…
+                                </span>
+                              ) : (
+                                <>
+                                  {displayKeys.map((k, j) => {
+                                    const display = k === '⌘' ? modKey : k
+                                    return <kbd key={j} className="inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[10px] font-mono font-medium min-w-[1.75rem]" style={{ background: 'rgba(14,14,34,0.9)', border: `1px solid ${custom ? 'rgba(123,111,255,0.4)' : 'rgba(40,40,80,0.9)'}`, boxShadow: '0 1px 0 rgba(0,0,0,0.5)', color: custom ? 'rgba(180,170,255,0.9)' : 'rgba(160,160,220,0.9)' }}>{display}</kbd>
+                                  })}
+                                  {sc.rebindable && (
+                                    <button
+                                      onClick={() => setRecording(sc.id)}
+                                      className="opacity-0 group-hover:opacity-100 ml-1 text-[9px] px-1.5 py-0.5 rounded transition-all"
+                                      style={{ background: 'rgba(123,111,255,0.1)', color: 'rgba(123,111,255,0.7)' }}
+                                      title="Rebind"
+                                    >✏️</button>
+                                  )}
+                                  {custom && (
+                                    <button
+                                      onClick={() => {
+                                        const next = { ...s.customShortcuts }
+                                        delete next[sc.id]
+                                        s.set({ customShortcuts: next })
+                                      }}
+                                      className="opacity-0 group-hover:opacity-100 text-[9px] px-1.5 py-0.5 rounded transition-all"
+                                      style={{ background: 'rgba(248,113,113,0.1)', color: 'rgba(248,113,113,0.6)' }}
+                                      title="Reset to default"
+                                    >↩</button>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 ))}
@@ -410,6 +468,9 @@ export function SettingsPanel({ onClose }: Props) {
                     <div className="text-[12px]">No shortcuts match &ldquo;{scSearch}&rdquo;</div>
                   </div>
                 )}
+                <p className="text-[10px] text-center" style={{ color: 'rgba(80,80,130,0.5)' }}>
+                  Hover a row and click ✏️ to rebind. Click ↩ to reset.
+                </p>
               </>
             )}
 
@@ -545,18 +606,57 @@ export function SettingsPanel({ onClose }: Props) {
                   <p className="text-[10px] mt-1.5 leading-relaxed" style={{ color: 'rgba(80,80,130,0.7)' }}>Activity data older than this is automatically removed. All data stays local.</p>
                 </SettingGroup>
 
-                <ComingSoon label="Insights Dashboard" desc="Charts of node usage, graph activity, and session length — coming soon." color="#f59e0b" />
+                <InsightsDashboard />
               </>
             )}
 
             {/* ── Recipes ─────────────────────────────────── */}
             {section === 'recipes' && (
-              <ComingSoon label="Recipes" desc="Save sequences of node operations as reusable recipes. Run them with one click or via the command palette." color="#f472b6" />
+              <>
+                <SettingGroup label="Recipes">
+                  <div className="rounded-xl px-3 py-3 space-y-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div className="flex items-start gap-3">
+                      <span className="text-xl mt-0.5">🎬</span>
+                      <div>
+                        <div className="text-[11px] font-semibold mb-1" style={{ color: 'rgba(234,234,248,0.8)' }}>Record node workflows as reusable Recipes</div>
+                        <div className="text-[10px] leading-relaxed" style={{ color: 'rgba(234,234,248,0.35)' }}>Capture a sequence of nodes once, replay it on any graph with one click or via the command palette.</div>
+                      </div>
+                    </div>
+                    <div className="text-[9px] font-semibold px-2 py-1 rounded-full text-center" style={{ background: 'rgba(244,114,182,0.08)', border: '1px solid rgba(244,114,182,0.15)', color: 'rgba(244,114,182,0.6)' }}>
+                      Coming in v0.5
+                    </div>
+                  </div>
+                </SettingGroup>
+              </>
             )}
 
             {/* ── Templates ───────────────────────────────── */}
             {section === 'templates' && (
-              <ComingSoon label="Graph Templates" desc="Start new graphs from pre-built templates. Share templates with your vault or across vaults." color="#818cf8" />
+              <>
+                <SettingGroup label="Template Library">
+                  <div className="rounded-xl px-3 py-3 space-y-2" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    {[
+                      { name: 'Pyro FX', icon: '🔥', tag: 'houdini' },
+                      { name: 'Character Rig', icon: '🦴', tag: 'kinefx' },
+                      { name: 'Procedural City', icon: '🏙️', tag: 'houdini' },
+                      { name: 'VDB Workflow', icon: '🫧', tag: 'vdb' },
+                      { name: 'Nuke Comp', icon: '🎬', tag: 'nuke' },
+                      { name: 'Lookdev', icon: '💡', tag: 'shading' },
+                      { name: 'Crowd Sim', icon: '🧑‍🤝‍🧑', tag: 'crowds' },
+                      { name: 'Pipeline Handoff', icon: '🔗', tag: 'pipeline' },
+                    ].map(t => (
+                      <div key={t.name} className="flex items-center gap-2">
+                        <span className="text-sm">{t.icon}</span>
+                        <span className="text-[11px]" style={{ color: 'rgba(234,234,248,0.7)' }}>{t.name}</span>
+                        <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(123,111,255,0.1)', color: 'rgba(123,111,255,0.6)' }}>{t.tag}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] mt-2 leading-relaxed" style={{ color: 'rgba(80,80,130,0.7)' }}>
+                    Open via the Templates panel in the sidebar. Custom template sharing coming in v0.5.
+                  </p>
+                </SettingGroup>
+              </>
             )}
 
             {/* ── Media ───────────────────────────────────── */}
@@ -576,7 +676,22 @@ export function SettingsPanel({ onClose }: Props) {
 
             {/* ── Bookmarks ───────────────────────────────── */}
             {section === 'bookmarks' && (
-              <ComingSoon label="Bookmarks" desc="Pin frequently-used nodes and graphs for instant access from the sidebar." color="#facc15" />
+              <>
+                <SettingGroup label="Bookmarks">
+                  <div className="rounded-xl px-3 py-3 space-y-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div className="flex items-start gap-3">
+                      <span className="text-xl mt-0.5">📌</span>
+                      <div>
+                        <div className="text-[11px] font-semibold mb-1" style={{ color: 'rgba(234,234,248,0.8)' }}>Pin nodes and graphs you use every day</div>
+                        <div className="text-[10px] leading-relaxed" style={{ color: 'rgba(234,234,248,0.35)' }}>Bookmarks follow your profile — not the vault — so they travel with you across every project.</div>
+                      </div>
+                    </div>
+                    <div className="text-[9px] font-semibold px-2 py-1 rounded-full text-center" style={{ background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.15)', color: 'rgba(250,204,21,0.6)' }}>
+                      Coming in v0.5
+                    </div>
+                  </div>
+                </SettingGroup>
+              </>
             )}
 
             {/* ── Bridge ──────────────────────────────────── */}
@@ -584,10 +699,10 @@ export function SettingsPanel({ onClose }: Props) {
               <>
                 <div className="space-y-0 rounded-xl overflow-hidden" style={{ border: '1px solid rgba(18,18,46,0.8)' }}>
                   <SettingRow label="Auto-detect Format" description="Automatically detect JSON, CSV, and YAML on import">
-                    <Toggle value={true} onChange={() => {}} disabled />
+                    <Toggle value={s.bridgeAutoDetect} onChange={v => s.set({ bridgeAutoDetect: v })} />
                   </SettingRow>
                   <SettingRow label="Preview Before Import" description="Show a diff preview before committing changes">
-                    <Toggle value={true} onChange={() => {}} disabled />
+                    <Toggle value={s.bridgePreviewImport} onChange={v => s.set({ bridgePreviewImport: v })} />
                   </SettingRow>
                 </div>
 
@@ -812,6 +927,112 @@ function StatCard({ icon, color, title, sub }: { icon: React.ReactNode; color: s
         <div className="text-[13px] font-semibold" style={{ color: 'rgba(200,200,240,0.9)' }}>{title}</div>
         <div className="text-[10px] mt-0.5" style={{ color: 'rgba(80,80,130,0.7)' }}>{sub}</div>
       </div>
+    </div>
+  )
+}
+
+
+/* ── Insights Dashboard ─────────────────────────────────── */
+function InsightsDashboard() {
+  const { getAllNodes } = useNodeStore()
+  const { graphs, byVault } = useGraphStore()
+  const { activeVaultId, vaults } = useVaultStore()
+
+  const allNodes = getAllNodes()
+  const vaultGraphIds = activeVaultId ? (byVault[activeVaultId] ?? []) : []
+  const vaultGraphs = vaultGraphIds.map(id => graphs[id]).filter(Boolean)
+
+  // Software breakdown from node tags
+  const softwareCounts = allNodes.reduce<Record<string, number>>((acc, n) => {
+    const tags: string[] = Array.isArray(n.tags) ? n.tags : []
+    const sw = tags.find(t => ['houdini','nuke','katana','blender','unreal','maya'].includes(t.toLowerCase()))
+    if (sw) acc[sw.toLowerCase()] = (acc[sw.toLowerCase()] ?? 0) + 1
+    return acc
+  }, {})
+  const swEntries = Object.entries(softwareCounts).sort((a, b) => b[1] - a[1]).slice(0, 5)
+  const maxSw = swEntries[0]?.[1] ?? 1
+
+  // Category breakdown
+  const catCounts = allNodes.reduce<Record<string, number>>((acc, n) => {
+    const cat = typeof n.category === 'string' ? n.category : (n.category as any)?.type ?? 'other'
+    acc[cat] = (acc[cat] ?? 0) + 1
+    return acc
+  }, {})
+  const catEntries = Object.entries(catCounts).sort((a, b) => b[1] - a[1]).slice(0, 4)
+  const maxCat = catEntries[0]?.[1] ?? 1
+
+  // Graph size distribution
+  const graphSizes = vaultGraphs.map(g => g.nodes?.length ?? 0)
+  const avgNodes = graphSizes.length ? Math.round(graphSizes.reduce((a, b) => a + b, 0) / graphSizes.length) : 0
+  const maxNodes = graphSizes.length ? Math.max(...graphSizes) : 0
+
+  const SW_COLORS: Record<string, string> = {
+    houdini: '#FF6B35', nuke: '#8BC34A', katana: '#E8A020',
+    blender: '#f472b6', unreal: '#22d3ee', maya: '#a78bfa',
+  }
+
+  const stat = (label: string, value: string | number, sub?: string) => (
+    <div className="rounded-xl px-3 py-2.5 flex flex-col gap-0.5"
+      style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="text-[18px] font-bold" style={{ color: 'rgba(234,234,248,0.9)' }}>{value}</div>
+      <div className="text-[10px]" style={{ color: 'rgba(234,234,248,0.4)' }}>{label}</div>
+      {sub && <div className="text-[9px]" style={{ color: 'rgba(234,234,248,0.25)' }}>{sub}</div>}
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      {/* Top stats */}
+      <div className="grid grid-cols-3 gap-2">
+        {stat('Nodes in library', allNodes.length.toLocaleString())}
+        {stat('Graphs', vaultGraphs.length, `in ${vaults.length} vault${vaults.length !== 1 ? 's' : ''}`)}
+        {stat('Avg nodes/graph', avgNodes || '—', maxNodes ? `max ${maxNodes}` : '')}
+      </div>
+
+      {/* Software breakdown */}
+      {swEntries.length > 0 && (
+        <div className="rounded-xl px-3 py-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <div className="text-[9px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'rgba(234,234,248,0.3)' }}>Software</div>
+          <div className="space-y-2">
+            {swEntries.map(([sw, count]) => (
+              <div key={sw} className="flex items-center gap-2">
+                <div className="text-[10px] w-14 capitalize flex-shrink-0" style={{ color: 'rgba(234,234,248,0.5)' }}>{sw}</div>
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                  <div className="h-full rounded-full transition-all"
+                    style={{ width: `${Math.round((count / maxSw) * 100)}%`, background: SW_COLORS[sw] ?? 'var(--cx-accent)' }} />
+                </div>
+                <div className="text-[10px] w-6 text-right" style={{ color: 'rgba(234,234,248,0.35)' }}>{count}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Category breakdown */}
+      {catEntries.length > 0 && (
+        <div className="rounded-xl px-3 py-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <div className="text-[9px] font-semibold uppercase tracking-widest mb-3" style={{ color: 'rgba(234,234,248,0.3)' }}>Categories</div>
+          <div className="space-y-2">
+            {catEntries.map(([cat, count]) => (
+              <div key={cat} className="flex items-center gap-2">
+                <div className="text-[10px] w-20 capitalize flex-shrink-0 truncate" style={{ color: 'rgba(234,234,248,0.5)' }}>{cat.replace(/_/g, ' ')}</div>
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                  <div className="h-full rounded-full transition-all"
+                    style={{ width: `${Math.round((count / maxCat) * 100)}%`, background: 'var(--cx-accent)' }} />
+                </div>
+                <div className="text-[10px] w-6 text-right" style={{ color: 'rgba(234,234,248,0.35)' }}>{count}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {allNodes.length === 0 && (
+        <div className="text-center py-4 text-[11px]" style={{ color: 'rgba(234,234,248,0.25)' }}>
+          Import nodes to see insights
+        </div>
+      )}
     </div>
   )
 }

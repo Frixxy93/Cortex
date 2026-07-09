@@ -26,10 +26,10 @@ const NAV_GROUPS: { id: string; label?: string; items: NavDef[] }[] = [
     label: 'Library',
     items: [
       { id: 'analytics', label: 'Analytics', color: '#f59e0b', icon: <AnalyticsIcon /> },
-      { id: 'recipes',   label: 'Recipes',   color: '#f472b6', icon: <RecipesIcon />,   soon: true },
+      { id: 'recipes',   label: 'Recipes',   color: '#f472b6', icon: <RecipesIcon /> },
       { id: 'templates', label: 'Templates', color: '#818cf8', icon: <TemplatesIcon /> },
-      { id: 'media',     label: 'Media',     color: '#4ade80', icon: <MediaIcon />,     soon: true },
-      { id: 'bookmarks', label: 'Bookmarks', color: '#facc15', icon: <BookmarkIcon />, soon: true },
+      { id: 'media',     label: 'Media',     color: '#4ade80', icon: <MediaIcon /> },
+      { id: 'bookmarks', label: 'Bookmarks', color: '#facc15', icon: <BookmarkIcon /> },
     ],
   },
   {
@@ -38,7 +38,7 @@ const NAV_GROUPS: { id: string; label?: string; items: NavDef[] }[] = [
     items: [
       { id: 'ai',     label: 'AI',     color: '#22d3ee', icon: <AiIcon /> },
       { id: 'import', label: 'Bridge', color: '#fb923c', icon: <ImportIcon /> },
-      { id: 'trash',  label: 'Trash',  color: '#f87171', icon: <TrashIcon />,  soon: true },
+      { id: 'trash',  label: 'Trash',  color: '#f87171', icon: <TrashIcon /> },
     ],
   },
 ]
