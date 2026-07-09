@@ -134,6 +134,27 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
         )}
       </div>
 
+      {/* action button */}
+      {toast.action && (
+        <button
+          onClick={() => { toast.action!.onClick(); dismiss() }}
+          style={{
+            flexShrink: 0, marginTop: 1, padding: '3px 8px', borderRadius: 6,
+            fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+            color: 'rgba(234,234,248,0.85)',
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            cursor: 'pointer', transition: 'background 0.15s',
+            position: 'relative',
+            whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.14)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+        >
+          {toast.action.label}
+        </button>
+      )}
+
       {/* dismiss button */}
       <button
         onClick={dismiss}

@@ -32,4 +32,5 @@ export interface Toast {
   description?: string
   variant: ToastVariant
   duration?: number
+  action?: { label: string; onClick: () => void }
 }

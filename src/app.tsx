@@ -22,6 +22,7 @@ import { SplashScreen } from '@/components/SplashScreen'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ShortcutsPanel } from '@/components/panels/ShortcutsPanel'
 import { OnboardingFlow } from '@/components/OnboardingFlow'
+import { ProfileGate } from '@/components/ProfileGate'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -297,7 +298,9 @@ export default function App() {
   return (
     <ErrorBoundary label="CORTEX">
       <QueryClientProvider client={queryClient}>
-        <CortexApp />
+        <ProfileGate>
+          <CortexApp />
+        </ProfileGate>
       </QueryClientProvider>
     </ErrorBoundary>
   )

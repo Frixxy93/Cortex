@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSettingsStore } from '@/stores/settings.store'
+import { useSettingsStore, type Profile } from '@/stores/settings.store'
 import { useAiStore } from '@/stores/ai.store'
 import { useUiStore } from '@/stores/ui.store'
 import { useNodeStore } from '@/stores/node.store'
@@ -251,67 +251,7 @@ export function SettingsPanel({ onClose }: Props) {
 
             {/* ── Profile ────────────────────────────────── */}
             {section === 'profile' && (
-              <>
-                <SettingGroup label="Display Name">
-                  <input
-                    type="text"
-                    value={s.profileName}
-                    onChange={e => s.set({ profileName: e.target.value })}
-                    placeholder="Your name"
-                    maxLength={40}
-                    className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-                    style={{ background: 'rgba(24,24,58,0.8)', border: '1px solid rgba(60,60,100,0.5)', color: 'var(--cx-text)', caretColor: 'var(--cx-accent)' }}
-                  />
-                  <p className="mt-1.5 text-[11px]" style={{ color: 'rgba(90,90,140,0.7)' }}>
-                    Your initials appear in the title bar avatar.
-                  </p>
-                </SettingGroup>
-
-                <SettingGroup label="Avatar Color">
-                  <div className="flex items-center gap-3">
-                    {['#7b6fff','#34d399','#f59e0b','#60a5fa','#f472b6','#fb923c','#a78bfa','#ef4444'].map(hex => (
-                      <button
-                        key={hex}
-                        onClick={() => s.set({ profileColor: hex })}
-                        title={hex}
-                        className="w-7 h-7 rounded-full flex-shrink-0 transition-all hover:scale-110"
-                        style={{
-                          background: hex,
-                          boxShadow: s.profileColor === hex
-                            ? `0 0 0 2px rgba(0,0,0,0.8), 0 0 0 3.5px ${hex}, 0 0 12px ${hex}60`
-                            : 'none',
-                          transform: s.profileColor === hex ? 'scale(1.15)' : undefined,
-                        }}
-                      >
-                        {s.profileColor === hex && (
-                          <svg viewBox="0 0 10 10" width="10" height="10" fill="none" className="mx-auto" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M2 5l2.5 2.5L8 3"/>
-                          </svg>
-                        )}
-                      </button>
-                    ))}
-                    <label title="Custom color" className="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all hover:scale-105" style={{ background: 'rgba(24,24,58,0.8)', border: '1.5px dashed rgba(60,60,100,0.7)' }}>
-                      <span style={{ color: 'rgba(90,90,140,0.7)', fontSize: 14 }}>+</span>
-                      <input type="color" value={s.profileColor} onChange={e => s.set({ profileColor: e.target.value })} className="sr-only" />
-                    </label>
-                  </div>
-                </SettingGroup>
-
-                <SettingGroup label="Preview">
-                  <div className="flex items-center gap-3 py-1">
-                    <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white"
-                      style={{ background: `linear-gradient(135deg, ${s.profileColor} 0%, ${s.profileColor}aa 100%)`, boxShadow: `0 0 0 1px ${s.profileColor}4d, 0 2px 8px rgba(0,0,0,0.4)` }}
-                    >
-                      {(s.profileName || 'FX').split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase() || 'FX'}
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium" style={{ color: 'var(--cx-text)' }}>{s.profileName || 'Artist'}</div>
-                      <div className="text-[11px]" style={{ color: 'rgba(90,90,140,0.7)' }}>Title bar avatar</div>
-                    </div>
-                  </div>
-                </SettingGroup>
-              </>
+              <ProfileSection s={s} />
             )}
 
             {/* ── Appearance ──────────────────────────────── */}
@@ -1082,7 +1022,14 @@ function UpdatesSection() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [updateObj, setUpdateObj] = useState<any>(null)
 
+  const isDev = import.meta.env.DEV
+
   const handleCheck = async () => {
+    if (isDev) {
+      setStatus('error')
+      setErrorMsg('Update checks are disabled in dev mode. Build a release to test updates.')
+      return
+    }
     setStatus('checking')
     setErrorMsg(null)
     setUpdateInfo(null)
@@ -1329,4 +1276,265 @@ function TitleBarPreview({ style, active }: { style: string; active: boolean }) 
 
 function EyeOffIcon() {
   return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M2 2l10 10M6.5 3.5C4.5 4 3 5.3 1.5 7c.8 1.4 2 2.7 3.5 3.3M8 10.5c1.3-.5 2.5-1.5 3.5-3-1-1.8-2.5-3-4.5-3.5"/></svg>
+}
+
+// ─── Profile Section ─────────────────────────────────────────────────────────
+const PRESET_COLORS = ['#7b6fff','#34d399','#f59e0b','#60a5fa','#f472b6','#fb923c','#a78bfa','#ef4444']
+
+function avatarInitials(name: string) {
+  return (name || 'FX').split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase() || 'FX'
+}
+
+function ProfileAvatar({ name, color, size = 40 }: { name: string; color: string; size?: number }) {
+  return (
+    <div
+      className="rounded-full flex items-center justify-center font-bold text-white flex-shrink-0"
+      style={{
+        width: size, height: size, fontSize: size * 0.32,
+        background: `linear-gradient(135deg, ${color} 0%, ${color}aa 100%)`,
+        boxShadow: `0 0 0 1px ${color}4d, 0 2px 8px rgba(0,0,0,0.4)`,
+      }}
+    >
+      {avatarInitials(name)}
+    </div>
+  )
+}
+
+function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      {PRESET_COLORS.map(hex => (
+        <button
+          key={hex}
+          onClick={() => onChange(hex)}
+          className="w-6 h-6 rounded-full flex-shrink-0 transition-all hover:scale-110"
+          style={{
+            background: hex,
+            boxShadow: value === hex
+              ? `0 0 0 2px rgba(0,0,0,0.8), 0 0 0 3.5px ${hex}, 0 0 10px ${hex}60`
+              : 'none',
+          }}
+        >
+          {value === hex && (
+            <svg viewBox="0 0 10 10" width="10" height="10" fill="none" className="mx-auto" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 5l2.5 2.5L8 3"/>
+            </svg>
+          )}
+        </button>
+      ))}
+      <label className="w-6 h-6 rounded-full flex items-center justify-center cursor-pointer hover:scale-105 transition-all" style={{ background: 'rgba(24,24,58,0.8)', border: '1.5px dashed rgba(60,60,100,0.7)' }}>
+        <span style={{ color: 'rgba(90,90,140,0.7)', fontSize: 13 }}>+</span>
+        <input type="color" value={value} onChange={e => onChange(e.target.value)} className="sr-only" />
+      </label>
+    </div>
+  )
+}
+
+function ProfileCard({
+  profile, isActive, onSwitch, onUpdate, onDelete, canDelete,
+}: {
+  profile: Profile
+  isActive: boolean
+  onSwitch: () => void
+  onUpdate: (patch: Partial<Pick<Profile, 'name' | 'color'>>) => void
+  onDelete: () => void
+  canDelete: boolean
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draftName, setDraftName] = useState(profile.name)
+  const [draftColor, setDraftColor] = useState(profile.color)
+
+  function saveEdit() {
+    onUpdate({ name: draftName || profile.name, color: draftColor })
+    setEditing(false)
+  }
+
+  function cancelEdit() {
+    setDraftName(profile.name)
+    setDraftColor(profile.color)
+    setEditing(false)
+  }
+
+  return (
+    <div
+      className="rounded-xl p-3 transition-all"
+      style={{
+        background: isActive ? 'rgba(123,111,255,0.08)' : 'rgba(255,255,255,0.025)',
+        border: isActive ? '1px solid rgba(123,111,255,0.3)' : '1px solid rgba(255,255,255,0.06)',
+      }}
+    >
+      {editing ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <ProfileAvatar name={draftName} color={draftColor} size={36} />
+            <input
+              autoFocus
+              value={draftName}
+              onChange={e => setDraftName(e.target.value)}
+              maxLength={30}
+              className="flex-1 rounded-lg px-3 py-1.5 text-sm outline-none"
+              style={{ background: 'rgba(24,24,58,0.8)', border: '1px solid rgba(60,60,100,0.5)', color: 'var(--cx-text)', caretColor: 'var(--cx-accent)' }}
+            />
+          </div>
+          <ColorPicker value={draftColor} onChange={setDraftColor} />
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={saveEdit}
+              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              style={{ background: 'rgba(123,111,255,0.2)', border: '1px solid rgba(123,111,255,0.35)', color: '#a89fff' }}
+            >
+              Save
+            </button>
+            <button
+              onClick={cancelEdit}
+              className="flex-1 py-1.5 rounded-lg text-xs font-medium transition-all"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(180,180,220,0.6)' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3">
+          <ProfileAvatar name={profile.name} color={profile.color} size={36} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium truncate" style={{ color: 'var(--cx-text)' }}>{profile.name}</span>
+              {isActive && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold" style={{ background: 'rgba(123,111,255,0.15)', color: '#a89fff', border: '1px solid rgba(123,111,255,0.2)' }}>
+                  ACTIVE
+                </span>
+              )}
+            </div>
+            <div className="text-[10px] mt-0.5" style={{ color: 'rgba(90,90,140,0.6)' }}>
+              {avatarInitials(profile.name)} · {profile.color}
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            {!isActive && (
+              <button
+                onClick={onSwitch}
+                className="px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all"
+                style={{ background: 'rgba(123,111,255,0.12)', border: '1px solid rgba(123,111,255,0.2)', color: '#a89fff' }}
+              >
+                Switch
+              </button>
+            )}
+            <button
+              onClick={() => setEditing(true)}
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:bg-white/5"
+              style={{ color: 'rgba(140,140,180,0.6)' }}
+              title="Edit"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8.5 1.5l2 2-7 7H1.5v-2l7-7z"/>
+              </svg>
+            </button>
+            {canDelete && (
+              <button
+                onClick={onDelete}
+                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:bg-red-500/10"
+                style={{ color: 'rgba(239,68,68,0.5)' }}
+                title="Delete profile"
+              >
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                  <path d="M2 2l7 7M9 2L2 9"/>
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProfileSection({ s }: { s: import('@/stores/settings.store').SettingsState }) {
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newColor, setNewColor] = useState('#7b6fff')
+
+  function handleCreate() {
+    if (!newName.trim()) return
+    s.addProfile(newName.trim(), newColor)
+    setNewName('')
+    setNewColor('#7b6fff')
+    setCreating(false)
+  }
+
+  return (
+    <>
+      <SettingGroup label="Profiles">
+        <div className="space-y-2">
+          {s.profiles.map(profile => (
+            <ProfileCard
+              key={profile.id}
+              profile={profile}
+              isActive={profile.id === s.activeProfileId}
+              onSwitch={() => s.switchProfile(profile.id)}
+              onUpdate={(patch) => s.updateProfile(profile.id, patch)}
+              onDelete={() => s.removeProfile(profile.id)}
+              canDelete={s.profiles.length > 1}
+            />
+          ))}
+        </div>
+
+        {creating ? (
+          <div className="mt-3 rounded-xl p-3 space-y-3" style={{ background: 'rgba(123,111,255,0.06)', border: '1px solid rgba(123,111,255,0.2)' }}>
+            <div className="flex items-center gap-3">
+              <ProfileAvatar name={newName || 'New'} color={newColor} size={36} />
+              <input
+                autoFocus
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setCreating(false) }}
+                placeholder="Profile name"
+                maxLength={30}
+                className="flex-1 rounded-lg px-3 py-1.5 text-sm outline-none"
+                style={{ background: 'rgba(24,24,58,0.8)', border: '1px solid rgba(60,60,100,0.5)', color: 'var(--cx-text)', caretColor: 'var(--cx-accent)' }}
+              />
+            </div>
+            <ColorPicker value={newColor} onChange={setNewColor} />
+            <div className="flex gap-2">
+              <button
+                onClick={handleCreate}
+                className="flex-1 py-1.5 rounded-lg text-xs font-semibold"
+                style={{ background: 'rgba(123,111,255,0.2)', border: '1px solid rgba(123,111,255,0.35)', color: '#a89fff' }}
+              >
+                Create
+              </button>
+              <button
+                onClick={() => setCreating(false)}
+                className="flex-1 py-1.5 rounded-lg text-xs font-medium"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(180,180,220,0.6)' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setCreating(true)}
+            className="mt-3 w-full py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-2"
+            style={{ background: 'rgba(123,111,255,0.06)', border: '1px dashed rgba(123,111,255,0.25)', color: 'rgba(123,111,255,0.7)' }}
+          >
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M5.5 1v9M1 5.5h9"/>
+            </svg>
+            New Profile
+          </button>
+        )}
+      </SettingGroup>
+
+      <SettingGroup label="Active Profile">
+        <div className="flex items-center gap-3 py-1">
+          <ProfileAvatar name={s.profileName} color={s.profileColor} size={44} />
+          <div>
+            <div className="text-sm font-semibold" style={{ color: 'var(--cx-text)' }}>{s.profileName}</div>
+            <div className="text-[11px] mt-0.5" style={{ color: 'rgba(90,90,140,0.6)' }}>Shown in title bar avatar</div>
+          </div>
+        </div>
+      </SettingGroup>
+    </>
+  )
 }

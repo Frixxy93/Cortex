@@ -30,7 +30,7 @@ interface UiStore {
   toggleBookmark: (nodeId: string) => void
   isBookmarked: (nodeId: string) => boolean
 
-  addToast: (title: string, opts?: { description?: string; variant?: ToastVariant; duration?: number }) => void
+  addToast: (title: string, opts?: { description?: string; variant?: ToastVariant; duration?: number; action?: { label: string; onClick: () => void } }) => void
   removeToast: (id: string) => void
 
   recentCommandIds: string[]
@@ -65,11 +65,14 @@ export const useUiStore = create<UiStore>((set, get) => ({
       description: opts.description,
       variant: opts.variant ?? 'default',
       duration: opts.duration ?? 4000,
+      action: opts.action,
     }
     set(s => ({ toasts: [...s.toasts, toast] }))
-    setTimeout(() => {
-      set(s => ({ toasts: s.toasts.filter(t => t.id !== toast.id) }))
-    }, toast.duration)
+    if (toast.duration !== 0) {
+      setTimeout(() => {
+        set(s => ({ toasts: s.toasts.filter(t => t.id !== toast.id) }))
+      }, toast.duration)
+    }
   },
 
   setTagFilter: (tag) => set(s => ({ activeTagFilter: s.activeTagFilter === tag ? null : tag })),
